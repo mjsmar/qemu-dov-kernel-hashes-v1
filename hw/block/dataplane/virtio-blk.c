@@ -24,6 +24,7 @@
 #include "virtio-blk.h"
 #include "block/aio.h"
 #include "hw/virtio/virtio-bus.h"
+#include "qcontext/qcontext.h"
 
 enum {
     SEG_MAX = 126,                  /* maximum number of I/O segments */
@@ -60,6 +61,7 @@ struct VirtIOBlockDataPlane {
      * use it).
      */
     AioContext *ctx;
+    QContext *qctx;
     EventNotifier io_notifier;      /* Linux AIO completion */
     EventNotifier host_notifier;    /* doorbell */
 
@@ -375,26 +377,6 @@ static void handle_io(EventNotifier *e)
     }
 }
 
-static void *data_plane_thread(void *opaque)
-{
-    VirtIOBlockDataPlane *s = opaque;
-
-    do {
-        aio_poll(s->ctx, true);
-    } while (!s->stopping || s->num_reqs > 0);
-    return NULL;
-}
-
-static void start_data_plane_bh(void *opaque)
-{
-    VirtIOBlockDataPlane *s = opaque;
-
-    qemu_bh_delete(s->start_bh);
-    s->start_bh = NULL;
-    qemu_thread_create(&s->thread, data_plane_thread,
-                       s, QEMU_THREAD_JOINABLE);
-}
-
 bool virtio_blk_data_plane_create(VirtIODevice *vdev, VirtIOBlkConf *blk,
                                   VirtIOBlockDataPlane **dataplane)
 {
@@ -460,6 +442,7 @@ void virtio_blk_data_plane_start(VirtIOBlockDataPlane *s)
     VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
     VirtQueue *vq;
     int i;
+    Error *err = NULL;
 
     if (s->started) {
         return;
@@ -502,9 +485,16 @@ void virtio_blk_data_plane_start(VirtIOBlockDataPlane *s)
     /* Kick right away to begin processing requests already in vring */
     event_notifier_set(virtio_queue_get_host_notifier(vq));
 
-    /* Spawn thread in BH so it inherits iothread cpusets */
-    s->start_bh = qemu_bh_new(start_data_plane_bh, s);
-    qemu_bh_schedule(s->start_bh);
+    /* use QEMU main loop/context by default */
+    if (!s->blk->context) {
+        s->blk->context = g_strdup("main");
+    }
+    s->qctx = qcontext_find_by_name(s->blk->context, &err);
+    if (err) {
+        fprintf(stderr, "virtio-blk failed to start: %s", error_get_pretty(err));
+        exit(1);
+    }
+    qcontext_attach_source(s->qctx, aio_get_g_source(s->ctx), NULL);
 }
 
 void virtio_blk_data_plane_stop(VirtIOBlockDataPlane *s)
@@ -516,15 +506,6 @@ void virtio_blk_data_plane_stop(VirtIOBlockDataPlane *s)
     }
     s->stopping = true;
     trace_virtio_blk_data_plane_stop(s);
-
-    /* Stop thread or cancel pending thread creation BH */
-    if (s->start_bh) {
-        qemu_bh_delete(s->start_bh);
-        s->start_bh = NULL;
-    } else {
-        aio_notify(s->ctx);
-        qemu_thread_join(&s->thread);
-    }
 
     aio_set_event_notifier(s->ctx, &s->io_notifier, NULL, NULL);
     ioq_cleanup(&s->ioqueue);

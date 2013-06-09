@@ -110,6 +110,7 @@ struct VirtIOBlkConf
     uint32_t scsi;
     uint32_t config_wce;
     uint32_t data_plane;
+    char *context;
 };
 
 struct VirtIOBlockDataPlane;
@@ -138,13 +139,15 @@ typedef struct VirtIOBlock {
         DEFINE_BLOCK_CHS_PROPERTIES(_state, _field.conf),                     \
         DEFINE_PROP_STRING("serial", _state, _field.serial),                  \
         DEFINE_PROP_BIT("config-wce", _state, _field.config_wce, 0, true),    \
-        DEFINE_PROP_BIT("scsi", _state, _field.scsi, 0, true)
+        DEFINE_PROP_BIT("scsi", _state, _field.scsi, 0, true),                \
+        DEFINE_PROP_STRING("context", _state, _field.context)
 #else
 #define DEFINE_VIRTIO_BLK_PROPERTIES(_state, _field)                          \
         DEFINE_BLOCK_PROPERTIES(_state, _field.conf),                         \
         DEFINE_BLOCK_CHS_PROPERTIES(_state, _field.conf),                     \
         DEFINE_PROP_STRING("serial", _state, _field.serial),                  \
-        DEFINE_PROP_BIT("config-wce", _state, _field.config_wce, 0, true)
+        DEFINE_PROP_BIT("config-wce", _state, _field.config_wce, 0, true),    \
+        DEFINE_PROP_STRING("context", _state, _field.context)
 #endif /* __linux__ */
 
 void virtio_blk_set_conf(DeviceState *dev, VirtIOBlkConf *blk);
