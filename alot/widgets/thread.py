@@ -21,7 +21,7 @@ class MessageSummaryWidget(urwid.WidgetWrap):
     one line summary of a :class:`~alot.db.message.Message`.
     """
 
-    def __init__(self, message, even=True):
+    def __init__(self, message, even=True, message_info=None):
         """
         :param message: a message
         :type message: alot.db.Message
@@ -30,6 +30,7 @@ class MessageSummaryWidget(urwid.WidgetWrap):
         """
         self.message = message
         self.even = even
+        self.message_info = message_info
         if even:
             attr = settings.get_theming_attribute('thread', 'summary', 'even')
         else:
@@ -56,7 +57,12 @@ class MessageSummaryWidget(urwid.WidgetWrap):
     def __str__(self):
         author, address = self.message.get_author()
         date = self.message.get_datestring()
-        rep = author if author != '' else address
+        rep = ""
+        if self.message_info.has_key('subject_changed') and self.message_info['subject_changed']:
+                subject = self.message.get_email().get('Subject', '')[0:50]
+                rep += subject + " " * (50 - len(subject))
+                rep += " - "
+        rep += author if author != '' else address
         if date is not None:
             rep += " (%s)" % date
         return rep
@@ -154,7 +160,7 @@ class MessageTree(CollapsibleTree):
 
     Collapsing this message corresponds to showing the summary only.
     """
-    def __init__(self, message, odd=True):
+    def __init__(self, message, odd=True, message_info=None):
         """
         :param message: Messag to display
         :type message: alot.db.Message
@@ -163,6 +169,7 @@ class MessageTree(CollapsibleTree):
         :type odd: bool
         """
         self._message = message
+        self._message_info = message_info
         self._odd = odd
         self.display_source = False
         self._summaryw = None
@@ -226,7 +233,7 @@ class MessageTree(CollapsibleTree):
     def _get_summary(self):
         if self._summaryw is None:
             self._summaryw = MessageSummaryWidget(
-                self._message, even=(not self._odd))
+                self._message, even=(not self._odd), message_info=self._message_info)
         return self._summaryw
 
     def _get_source(self):
@@ -330,14 +337,18 @@ class ThreadTree(Tree):
         self._prev_sibling_of = {}
         self._message = {}
 
-        def accumulate(msg, odd=True):
+        def accumulate(msg, odd=True, subject_changed=True):
+            message_info = {}
             """recursively read msg and its replies"""
             mid = msg.get_message_id()
-            self._message[mid] = MessageTree(msg, odd)
+            subject = msg.get_email().get('Subject', '')
+            message_info['subject_changed'] = subject_changed
+            self._message[mid] = MessageTree(msg, odd, message_info)
             odd = not odd
             last = None
             self._first_child_of[mid] = None
             for reply in thread.get_replies_to(msg):
+                rsubject = reply.get_email().get('Subject', '')
                 rid = reply.get_message_id()
                 if self._first_child_of[mid] is None:
                     self._first_child_of[mid] = rid
@@ -345,7 +356,7 @@ class ThreadTree(Tree):
                 self._prev_sibling_of[rid] = last
                 self._next_sibling_of[last] = rid
                 last = rid
-                odd = accumulate(reply, odd)
+                odd = accumulate(reply, odd, rsubject != subject)
             self._last_child_of[mid] = last
             return odd
 
