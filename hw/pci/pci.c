@@ -103,7 +103,8 @@ static const VMStateDescription vmstate_pcibus = {
         VMSTATE_END_OF_LIST()
     }
 };
-static int pci_bar(PCIDevice *d, int reg)
+
+int pci_bar(PCIDevice *d, int reg)
 {
     uint8_t type;
 
