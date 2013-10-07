@@ -883,6 +883,40 @@ MemoryRegionSection memory_region_find(MemoryRegion *mr,
                                        hwaddr addr, uint64_t size);
 
 /**
+ * memory_region_find_subregion: translate an address/size relative
+ * to a MemoryRegion into a #MemoryRegionSection corresponding to
+ * a child of that region.
+ *
+ * This is similar to memory_region_find, but locates the first
+ * #MemoryRegion within @mr that overlaps the range, as opposed to
+ * the first #MemoryRegion with @mr's address space.
+ *
+ * Returns a #MemoryRegionSection that describes a contiguous overlap.
+ * It will have the following characteristics:
+ *    .@size = 0 iff no overlap was found
+ *    .@mr is non-%NULL iff an overlap was found
+ *
+ * Remember that in the return value the @offset_within_region is
+ * relative to the returned region (in the .@mr field), not to the
+ * @mr argument.
+ *
+ * Similarly, the .@offset_within_address_space is relative to the
+ * address space that contains both regions, the passed and the
+ * returned one.  However, in the special case where the @mr argument
+ * has no parent (and thus is the root of the address space), the
+ * following will hold:
+ *    .@offset_within_address_space >= @addr
+ *    .@offset_within_address_space + .@size <= @addr + @size
+ *
+ * @mr: a MemoryRegion within which @addr is a relative address
+ * @addr: start of the area within @as to be searched
+ * @size: size of the area to be searched
+ */
+MemoryRegionSection memory_region_find_subregion(MemoryRegion *mr,
+                                                 hwaddr addr,
+                                                 uint64_t size);
+
+/**
  * address_space_sync_dirty_bitmap: synchronize the dirty log for all memory
  *
  * Synchronizes the dirty page log for an entire address space.
