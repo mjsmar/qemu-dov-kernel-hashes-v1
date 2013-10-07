@@ -1574,6 +1574,56 @@ bool memory_region_present(MemoryRegion *parent, hwaddr addr)
     return true;
 }
 
+MemoryRegionSection memory_region_find_subregion(MemoryRegion *mr,
+                                                 hwaddr addr, uint64_t size)
+{
+    MemoryRegionSection ret = { 0 };
+    MemoryRegion *submr = NULL;
+
+    QTAILQ_FOREACH(submr, &mr->subregions, subregions_link) {
+        if (!(submr->addr + memory_region_size(submr) - 1 < addr ||
+            submr->addr >= addr + size)) {
+            break;
+        }
+    }
+
+    if (submr) {
+        hwaddr as_addr;
+        MemoryRegion *root;
+        Int128 last_range_addr = int128_make64(addr + size);
+        Int128 last_region_addr =
+            int128_make64(submr->addr + memory_region_size(submr));
+
+        for (root = submr, as_addr = submr->addr; root->parent; ) {
+            root = root->parent;
+            as_addr += root->addr;
+        }
+        ret.mr = submr;
+        ret.size = submr->size;
+        ret.offset_within_address_space = as_addr;
+        /* if the region begins before the range we're checking, subtract the
+         * difference from our offset/size
+         */
+        if (submr->addr <= addr) {
+            ret.offset_within_region = addr - submr->addr;
+            ret.offset_within_address_space += ret.offset_within_region;
+            ret.size = int128_sub(ret.size,
+                                  int128_make64(ret.offset_within_region));
+        }
+        /* if the region extends beyond the range we're checking, subtract the
+         * difference from our size
+         */
+        if (int128_gt(last_region_addr, last_range_addr)) {
+            ret.size = int128_sub(ret.size,
+                                  int128_sub(last_region_addr,
+                                             last_range_addr));
+        }
+        memory_region_ref(ret.mr);
+    }
+
+    return ret;
+}
+
 MemoryRegionSection memory_region_find(MemoryRegion *mr,
                                        hwaddr addr, uint64_t size)
 {
