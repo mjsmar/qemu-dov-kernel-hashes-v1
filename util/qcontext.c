@@ -65,6 +65,9 @@ static void qcontext_set_threaded(Object *obj, const char *threaded,
     QContext *ctx = QCONTEXT(obj);
 
     if (strcmp(threaded, "yes") == 0) {
+        if (ctx->threaded == false) {
+            qcontext_create_thread(ctx);
+        }
         ctx->threaded = true;
         ctx->should_run = true;
     } else if (strcmp(threaded, "no") == 0) {
