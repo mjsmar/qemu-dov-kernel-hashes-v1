@@ -404,7 +404,7 @@ typedef struct ConfigureConnectorState {
     int depth;
     enum {
         CC_STATE_IDLE = 0,
-        CC_STATE_PENDING = 0,
+        CC_STATE_PENDING = 1,
         CC_STATE_ACTIVE,
     } state;
 } ConfigureConnectorState;

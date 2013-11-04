@@ -1489,6 +1489,7 @@ static void spapr_create_drc_phb_dt_entries(void *fdt, int bus_off, int phb_inde
     uint32_t int_buf[SPAPR_DRC_PHB_SLOT_MAX + 1];
     uint32_t *entries;
     int i, ret, offset;
+    DrcEntry *drc_table, *drc_entry_slot;
 
     /* ibm,drc-indexes */
     memset(int_buf, 0 , sizeof(int_buf));
@@ -1578,6 +1579,27 @@ static void spapr_create_drc_phb_dt_entries(void *fdt, int bus_off, int phb_inde
         g_warning("error adding 'ibm,sensor-9003' field for PHB FDT");
     }
 
+    /* TODO: this should probably match hotplug fdt */
+    char slot_name[1024];
+    drc_table = spapr_phb_to_drc_entry(phb_index + SPAPR_PCI_BASE_BUID);
+    g_assert(drc_table);
+    drc_entry_slot = drc_table->child_entries;
+    for (i = 0; i < SPAPR_DRC_PHB_SLOT_MAX; i++) {
+        if (drc_entry_slot[i].cc_state.state == CC_STATE_IDLE) {
+            g_warning("idx slot state: %d is idle", i);
+            continue;
+        }
+        sprintf(slot_name, "pci@%d", i);
+        g_warning("creating boot-time fdt entry for %s", slot_name);
+        int dev_off = fdt_add_subnode(fdt, bus_off, slot_name);
+        fdt_setprop(fdt, dev_off, "ibm,my-drc-index",
+                     &drc_entry_slot[i].drc_index,
+                     sizeof(drc_entry_slot[i].drc_index));
+        fdt_setprop(fdt, dev_off, "ibm,loc-code",
+                     &drc_entry_slot[i].drc_index,
+                     sizeof(drc_entry_slot[i].drc_index));
+        fdt_end_node(fdt);
+    }
 }
 
 
