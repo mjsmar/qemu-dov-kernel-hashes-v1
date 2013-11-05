@@ -298,7 +298,10 @@ DrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state)
     }
 
     if (found_drc) {
+        g_warning("drc_table: found existing entry");
         return found_drc;
+    } else {
+        g_warning("drc_table: adding new entry");
     }
 
     if (empty_drc) {
