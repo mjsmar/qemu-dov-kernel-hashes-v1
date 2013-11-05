@@ -1510,7 +1510,7 @@ static void spapr_create_drc_phb_dt_entries(void *fdt, int bus_off, int phb_inde
     int_buf[0] = SPAPR_DRC_PHB_SLOT_MAX;
 
     for (i = 1; i <= SPAPR_DRC_PHB_SLOT_MAX; i++) {
-        int_buf[i] = i;
+        int_buf[i] = 0xffffffff;
     }
 
     ret = fdt_setprop(fdt, bus_off, "ibm,drc-power-domains", int_buf,
