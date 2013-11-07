@@ -400,6 +400,10 @@ void spapr_pci_hotplug_remove(DeviceState *qdev, int slot)
 {
     sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
 
+    /* TODO: removal is generally initiated by guest, need to
+     * document what exactly the guest is supposed to do with
+     * this event. What does ACPI or shpc do?
+     */
     return spapr_hotplug_req(RTAS_LOG_V6_HP_TYPE_SLOT,
                              RTAS_LOG_V6_HP_ACTION_REMOVE, phb, slot);
 }

@@ -1173,7 +1173,20 @@ static int spapr_phb_add_pci_dt(DeviceState *qdev, PCIDevice *dev)
 
 static void spapr_phb_remove_pci_dt(DeviceState *qdev, PCIDevice *dev)
 {
-    /* TODO */
+    sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
+    DrcEntry *drc_entry, *drc_entry_slot;
+    ConfigureConnectorState *ccs;
+    int slot = PCI_SLOT(dev->devfn);
+
+    drc_entry = spapr_phb_to_drc_entry(phb->buid);
+    g_assert(drc_entry);
+    drc_entry_slot = &drc_entry->child_entries[slot];
+    ccs = &drc_entry_slot->cc_state;
+    /* shouldn't be removing devices we haven't created an fdt for */
+    g_assert(ccs->state != CC_STATE_IDLE);
+    /* TODO: free the fdt */
+    ccs->fdt = NULL;
+    ccs->state = CC_STATE_IDLE;
 }
 
 static int spapr_device_hotplug(DeviceState *qdev, PCIDevice *dev,
@@ -1193,7 +1206,7 @@ static int spapr_device_hotplug(DeviceState *qdev, PCIDevice *dev,
         spapr_pci_hotplug_add(qdev, slot);
     } else {
         fprintf(stderr, "Hot remove of device on slot %d\n", slot);
-
+        qdev_free(&dev->qdev);
         spapr_phb_remove_pci_dt(qdev, dev);
         spapr_pci_hotplug_remove(qdev, slot);
     }
