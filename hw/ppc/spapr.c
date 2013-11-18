@@ -1481,7 +1481,7 @@ static void ppc_spapr_init(QEMUMachineInitArgs *args)
                                             initrd_base, initrd_size,
                                             kernel_size,
                                             boot_device, kernel_cmdline,
-                                            spapr->epow_irq);
+                                            spapr->check_exception_irq);
     assert(spapr->fdt_skel != NULL);
 }
 
