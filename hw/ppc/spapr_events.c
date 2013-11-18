@@ -182,6 +182,7 @@ struct rtas_event_log_v6_hp {
 #define RTAS_LOG_V6_HP_TYPE_MEMORY                       2
 #define RTAS_LOG_V6_HP_TYPE_SLOT                         3
 #define RTAS_LOG_V6_HP_TYPE_PHB                          4
+#define RTAS_LOG_V6_HP_TYPE_PCI                          5
     uint8_t hotplug_action;
 #define RTAS_LOG_V6_HP_ACTION_ADD                        1
 #define RTAS_LOG_V6_HP_ACTION_REMOVE                     2
@@ -379,7 +380,7 @@ static void spapr_hotplug_req(uint8_t hp_type, uint8_t hp_action,
     }
 
     switch (hp_type) {
-    case RTAS_LOG_V6_HP_TYPE_SLOT:
+    case RTAS_LOG_V6_HP_TYPE_PCI:
 	hp->drc.index = drc_entry->child_entries[slot].drc_index;
         hp->hotplug_identifier = RTAS_LOG_V6_HP_ID_DRC_INDEX;
         break;
@@ -392,7 +393,7 @@ void spapr_pci_hotplug_add(DeviceState *qdev, int slot)
 {
     sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
 
-    return spapr_hotplug_req(RTAS_LOG_V6_HP_TYPE_SLOT,
+    return spapr_hotplug_req(RTAS_LOG_V6_HP_TYPE_PCI,
                              RTAS_LOG_V6_HP_ACTION_ADD, phb, slot);
 }
 
@@ -404,7 +405,7 @@ void spapr_pci_hotplug_remove(DeviceState *qdev, int slot)
      * document what exactly the guest is supposed to do with
      * this event. What does ACPI or shpc do?
      */
-    return spapr_hotplug_req(RTAS_LOG_V6_HP_TYPE_SLOT,
+    return spapr_hotplug_req(RTAS_LOG_V6_HP_TYPE_PCI,
                              RTAS_LOG_V6_HP_ACTION_REMOVE, phb, slot);
 }
 
