@@ -449,6 +449,14 @@ static void check_exception(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     }
 }
 
+static void event_scan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                            uint32_t token, uint32_t nargs,
+                            target_ulong args,
+                            uint32_t nret, target_ulong rets)
+{
+    rtas_st(rets, 0, 1); /* no error events found */
+}
+
 void spapr_events_init(sPAPREnvironment *spapr)
 {
     spapr->check_exception_irq = xics_alloc(spapr->icp, 0, 0, false);
@@ -456,4 +464,5 @@ void spapr_events_init(sPAPREnvironment *spapr)
     qemu_register_powerdown_notifier(&spapr->epow_notifier);
     spapr_rtas_register(RTAS_CHECK_EXCEPTION, "check-exception",
                         check_exception);
+    spapr_rtas_register(RTAS_EVENT_SCAN, "event-scan", event_scan);
 }
