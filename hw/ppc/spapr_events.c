@@ -238,6 +238,11 @@ void spapr_events_fdt_skel(void *fdt, uint32_t check_exception_irq)
 
 typedef struct EventLogEntry {
     int log_type;
+    /* according to PAPR+ 2.7, 10.1, events to be retrieved via
+     * check-exception are mutually exclusive with those to be
+     * retrieved via event-scan
+     */
+    bool exception;
     void *data;
     QTAILQ_ENTRY(EventLogEntry) next;
 } EventLogEntry;
@@ -246,16 +251,17 @@ static struct {
     QTAILQ_HEAD(, EventLogEntry) pending_events;
 } rtas_event_log;
 
-static void rtas_event_log_queue(int log_type, void *data)
+static void rtas_event_log_queue(int log_type, void *data, bool exception)
 {
     EventLogEntry *entry = g_new(EventLogEntry, 1);
 
     entry->log_type = log_type;
+    entry->exception = exception;
     entry->data = data;
     QTAILQ_INSERT_TAIL(&rtas_event_log.pending_events, entry, next);
 }
 
-static EventLogEntry *rtas_event_log_dequeue(uint32_t event_mask)
+static EventLogEntry *rtas_event_log_dequeue(uint32_t event_mask, bool exception)
 {
     EventLogEntry *entry = NULL;
 
@@ -265,6 +271,9 @@ static EventLogEntry *rtas_event_log_dequeue(uint32_t event_mask)
     }
 
     QTAILQ_FOREACH(entry, &rtas_event_log.pending_events, next) {
+        if (entry->exception != exception) {
+            continue;
+        }
         /* EPOW and hotplug events are surfaced in the same manner */
         if (entry->log_type == RTAS_LOG_TYPE_EPOW ||
             entry->log_type == RTAS_LOG_TYPE_HOTPLUG) {
@@ -356,7 +365,7 @@ static void spapr_powerdown_req(Notifier *n, void *opaque)
     epow->event_modifier = RTAS_LOG_V6_EPOW_MODIFIER_NORMAL;
     epow->extended_modifier = RTAS_LOG_V6_EPOW_XMODIFIER_PARTITION_SPECIFIC;
 
-    rtas_event_log_queue(RTAS_LOG_TYPE_EPOW, pending_epow);
+    rtas_event_log_queue(RTAS_LOG_TYPE_EPOW, pending_epow, true);
 
     qemu_irq_pulse(xics_get_qirq(spapr->icp, spapr->check_exception_irq));
 }
@@ -415,7 +424,7 @@ static void spapr_hotplug_req_event(sPAPRDRConnector *drc, uint8_t hp_action)
         return;
     }
 
-    rtas_event_log_queue(RTAS_LOG_TYPE_HOTPLUG, new_hp);
+    rtas_event_log_queue(RTAS_LOG_TYPE_HOTPLUG, new_hp, true);
 
     qemu_irq_pulse(xics_get_qirq(spapr->icp, spapr->check_exception_irq));
 }
@@ -452,7 +461,54 @@ static void check_exception(PowerPCCPU *cpu, sPAPREnvironment *spapr,
         xinfo |= (uint64_t)rtas_ld(args, 6) << 32;
     }
 
-    event = rtas_event_log_dequeue(mask);
+    event = rtas_event_log_dequeue(mask, true);
+    if (!event) {
+        goto out_no_events;
+    }
+
+    switch (event->log_type) {
+        case RTAS_LOG_TYPE_EPOW:
+            event_len = sizeof(struct epow_log_full);
+            break;
+        case RTAS_LOG_TYPE_HOTPLUG:
+            event_len = sizeof(struct hp_log_full);
+            break;
+        default:
+            goto out_no_events;
+    }
+
+    if (event_len < len) {
+        len = event_len;
+    }
+
+    cpu_physical_memory_write(buf, event->data, len);
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+    g_free(event->data);
+    g_free(event);
+    return;
+
+out_no_events:
+    rtas_st(rets, 0, RTAS_OUT_NO_ERRORS_FOUND);
+}
+
+static void event_scan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                       uint32_t token, uint32_t nargs,
+                       target_ulong args,
+                       uint32_t nret, target_ulong rets)
+{
+    uint32_t mask, buf, len, event_len;
+    EventLogEntry *event;
+
+    if (nargs != 4 || nret != 1) {
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    mask = rtas_ld(args, 0);
+    buf = rtas_ld(args, 2);
+    len = rtas_ld(args, 3);
+
+    event = rtas_event_log_dequeue(mask, false);
     if (!event) {
         goto out_no_events;
     }
@@ -490,4 +546,5 @@ void spapr_events_init(sPAPREnvironment *spapr)
     qemu_register_powerdown_notifier(&spapr->epow_notifier);
     spapr_rtas_register(RTAS_CHECK_EXCEPTION, "check-exception",
                         check_exception);
+    spapr_rtas_register(RTAS_EVENT_SCAN, "event-scan", event_scan);
 }
