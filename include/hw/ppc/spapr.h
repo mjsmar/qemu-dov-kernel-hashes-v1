@@ -63,7 +63,7 @@ typedef struct sPAPREnvironment {
     struct PPCTimebase tb;
     bool has_graphics;
 
-    uint32_t epow_irq;
+    uint32_t check_exception_irq;
     Notifier epow_notifier;
 
     /* Migration state */
@@ -465,5 +465,7 @@ int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
 sPAPRDrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state);
 sPAPRDrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
 sPAPRDrcEntry *spapr_find_drc_entry(int drc_index);
+void spapr_pci_hotplug_add_event(DeviceState *qdev, int slot);
+void spapr_pci_hotplug_remove_event(DeviceState *qdev, int slot);
 
 #endif /* !defined (__HW_SPAPR_H__) */
