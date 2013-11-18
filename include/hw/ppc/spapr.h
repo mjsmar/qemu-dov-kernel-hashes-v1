@@ -333,6 +333,40 @@ typedef struct sPAPREnvironment {
 #define ENCODE_DRC_STATE(val, m, s) \
     (((uint32_t)(val) << (s)) & (uint32_t)(m))
 
+/* For dlparable/hotpluggable slots */
+#define SPAPR_DRC_TABLE_SIZE    32
+#define SPAPR_DRC_PHB_SLOT_MAX  32
+#define SPAPR_DRC_DEV_ID_BASE   0x40000000
+
+typedef struct ConfigureConnectorState {
+    void *fdt;
+    int offset_start;
+    int offset;
+    int depth;
+    PCIDevice *dev;
+    enum {
+        CC_STATE_IDLE = 0,
+        CC_STATE_PENDING = 1,
+        CC_STATE_ACTIVE,
+    } state;
+} ConfigureConnectorState;
+
+typedef struct DrcEntry DrcEntry;
+
+struct DrcEntry {
+    uint32_t drc_index;
+    uint64_t phb_buid;
+    void *fdt;
+    int fdt_offset;
+    uint32_t state;
+    ConfigureConnectorState cc_state;
+    DrcEntry *child_entries;
+};
+
+extern DrcEntry drc_table[SPAPR_DRC_TABLE_SIZE];
+DrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state);
+
+
 extern sPAPREnvironment *spapr;
 
 /*#define DEBUG_SPAPR_HCALLS*/
