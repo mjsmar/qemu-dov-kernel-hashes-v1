@@ -56,6 +56,7 @@
 #include "qemu/error-report.h"
 #include "trace.h"
 #include "hw/nmi.h"
+#include "hw/ppc/spapr_drc.h"
 
 #include "hw/compat.h"
 
@@ -297,6 +298,83 @@ static hwaddr spapr_node0_size(void)
         }
     }
     return ram_size;
+}
+
+static void spapr_create_drc_dt_entries(void *fdt)
+{
+    char char_buf[1024];
+    uint32_t int_buf[SPAPR_DRC_MAX_PHB + 1];
+    uint32_t *entries;
+    int offset, fdt_offset;
+    int i, ret;
+
+    fdt_offset = fdt_path_offset(fdt, "/");
+
+    /* ibm,drc-indexes */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = SPAPR_DRC_MAX_PHB;
+
+    for (i = 1; i <= SPAPR_DRC_MAX_PHB; i++) {
+        sPAPRDRConnector *drc;
+        sPAPRDRConnectorClass *drck;
+
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PHB, i - 1);
+        g_assert(drc); /* should been be created during spapr machine init */
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        int_buf[i] = cpu_to_be32(drck->get_index(drc));
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-indexes", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-indexes property\n");
+    }
+
+    /* ibm,drc-power-domains (-1 signifies automatic/'live-insertion' domain) */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = SPAPR_DRC_MAX_PHB;
+
+    for (i = 1; i <= SPAPR_DRC_MAX_PHB; i++) {
+        int_buf[i] = cpu_to_be32(-1);
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-power-domains", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-power-domains property\n");
+    }
+
+    /* ibm,drc-names */
+    memset(char_buf, 0, sizeof(char_buf));
+    entries = (uint32_t *)&char_buf[0];
+    *entries = SPAPR_DRC_MAX_PHB;
+    offset = sizeof(*entries);
+
+    for (i = 0; i < SPAPR_DRC_MAX_PHB; i++) {
+        offset += sprintf(char_buf + offset, "PHB %d", i + 1);
+        char_buf[offset++] = '\0';
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-names", char_buf, offset);
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-names property\n");
+    }
+
+    /* ibm,drc-types */
+    memset(char_buf, 0, sizeof(char_buf));
+    entries = (uint32_t *)&char_buf[0];
+    *entries = SPAPR_DRC_MAX_PHB;
+    offset = sizeof(*entries);
+
+    for (i = 0; i < SPAPR_DRC_MAX_PHB; i++) {
+        offset += sprintf(char_buf + offset, "PHB");
+        char_buf[offset++] = '\0';
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-types", char_buf, offset);
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-types property\n");
+    }
 }
 
 #define _FDT(exp) \
@@ -786,6 +864,10 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
 
     if (!spapr->has_graphics) {
         spapr_populate_chosen_stdout(fdt, spapr->vio_bus);
+    }
+
+    if (spapr->dr_enabled) {
+        spapr_create_drc_dt_entries(fdt);
     }
 
     _FDT((fdt_pack(fdt)));
@@ -1295,6 +1377,16 @@ static SaveVMHandlers savevm_htab_handlers = {
     .load_state = htab_load,
 };
 
+static void spapr_drc_reset(void *opaque)
+{
+    sPAPRDRConnector *drc = opaque;
+    DeviceState *d = DEVICE(drc);
+
+    if (d) {
+        device_reset(d);
+    }
+}
+
 /* pSeries LPAR / sPAPR hardware init */
 static void ppc_spapr_init(MachineState *machine)
 {
@@ -1457,6 +1549,26 @@ static void ppc_spapr_init(MachineState *machine)
 
     /* We always have at least the nvram device on VIO */
     spapr_create_nvram(spapr);
+
+    /* Set by a constant for now, in the future it may be tied to
+     * a machine type/option
+     */
+    spapr->dr_enabled = SPAPR_DR_ENABLED;
+
+    /* Setup hotplug / dynamic-reconfiguration connectors. top-level
+     * connectors (described in root DT node's "ibm,drc-types" property)
+     * are pre-initialized here. additional child connectors (such as
+     * connectors for a PHBs PCI slots) are added as needed during their
+     * parent's realization.
+     */
+    if (spapr->dr_enabled) {
+        for (i = 0; i < SPAPR_DRC_MAX_PHB; i++) {
+            sPAPRDRConnector *drc =
+                spapr_dr_connector_new(OBJECT(machine),
+                                       SPAPR_DR_CONNECTOR_TYPE_PHB, i);
+            qemu_register_reset(spapr_drc_reset, drc);
+        }
+    }
 
     /* Set up PCI */
     spapr_pci_rtas_init();

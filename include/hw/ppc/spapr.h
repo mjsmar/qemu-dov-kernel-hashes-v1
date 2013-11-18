@@ -10,6 +10,12 @@ struct sPAPRNVRAM;
 
 #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
 
+/* enable by default for now, may tie this to machine type/option later */
+#define SPAPR_DR_ENABLED        1
+
+/* TODO: check if we should limit phb->index to 0-31 for hotplugability */
+#define SPAPR_DRC_MAX_PHB       32 /* maximum number of hotpluggable PHBs */
+
 typedef struct sPAPREnvironment {
     struct VIOsPAPRBus *vio_bus;
     QLIST_HEAD(, sPAPRPHBState) phbs;
@@ -29,6 +35,7 @@ typedef struct sPAPREnvironment {
     uint64_t rtc_offset;
     struct PPCTimebase tb;
     bool has_graphics;
+    bool dr_enabled; /* hotplug / dynamic-reconfiguration */
 
     uint32_t epow_irq;
     Notifier epow_notifier;
