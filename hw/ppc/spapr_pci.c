@@ -1211,8 +1211,8 @@ static int spapr_device_hotplug(DeviceState *qdev, PCIDevice *dev,
         spapr_pci_hotplug_add(qdev, slot);
     } else {
         fprintf(stderr, "Hot remove of device on slot %d\n", slot);
-        qdev_free(&dev->qdev);
         spapr_phb_remove_pci_dt(qdev, dev);
+        qdev_free(&dev->qdev);
         spapr_pci_hotplug_remove(qdev, slot);
     }
 
