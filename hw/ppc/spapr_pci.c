@@ -511,6 +511,27 @@ static void rtas_set_indicator(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
+static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                                 uint32_t token, uint32_t nargs,
+                                 target_ulong args, uint32_t nret,
+                                 target_ulong rets)
+{
+    /* we currently only use a single, "live insert" powerdomain for
+     * hotplugged/dlpar'd resources, so the power is always live/full (100)
+     */
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+    rtas_st(rets, 1, 100);
+}
+
+static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args, uint32_t nret,
+                                  target_ulong rets)
+{
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+    rtas_st(rets, 1, 100);
+}
+
 static int pci_spapr_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;
@@ -1175,6 +1196,10 @@ void spapr_pci_rtas_init(void)
     }
     spapr_rtas_register(RTAS_SET_INDICATOR, "set-indicator",
                         rtas_set_indicator);
+    spapr_rtas_register(RTAS_SET_POWER_LEVEL, "set-power-level",
+                        rtas_set_power_level);
+    spapr_rtas_register(RTAS_GET_POWER_LEVEL, "get-power-level",
+                        rtas_get_power_level);
 }
 
 static void spapr_pci_register_types(void)
