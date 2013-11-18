@@ -609,6 +609,7 @@ static void *spapr_create_fdt_skel(const char *cpu_model,
         refpoints, sizeof(refpoints))));
 
     _FDT((fdt_property_cell(fdt, "rtas-error-log-max", RTAS_ERROR_LOG_MAX)));
+    _FDT((fdt_property_cell(fdt, "rtas-event-scan-rate", RTAS_EVENT_SCAN_RATE)));
 
     _FDT((fdt_end_node(fdt)));
 
