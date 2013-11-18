@@ -626,6 +626,115 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 1, decoded);
 }
 
+/* configure-connector work area offsets, int32_t units */
+#define CC_IDX_NODE_NAME_OFFSET 2
+#define CC_IDX_PROP_NAME_OFFSET 2
+#define CC_IDX_PROP_LEN 3
+#define CC_IDX_PROP_DATA_OFFSET 4
+
+#define CC_VAL_DATA_OFFSET ((CC_IDX_PROP_DATA_OFFSET + 1) * 4)
+#define CC_RET_NEXT_SIB 1
+#define CC_RET_NEXT_CHILD 2
+#define CC_RET_NEXT_PROPERTY 3
+#define CC_RET_PREV_PARENT 4
+#define CC_RET_ERROR RTAS_OUT_HW_ERROR
+#define CC_RET_SUCCESS RTAS_OUT_SUCCESS
+
+static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
+                                         sPAPREnvironment *spapr,
+                                         uint32_t token, uint32_t nargs,
+                                         target_ulong args, uint32_t nret,
+                                         target_ulong rets)
+{
+    uint64_t wa_addr = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 0);
+    sPAPRDrcEntry *drc_entry = NULL;
+    sPAPRConfigureConnectorState *ccs;
+    void *wa_buf;
+    int32_t *wa_buf_int;
+    hwaddr map_len = 0x1024;
+    uint32_t drc_index;
+    int rc = 0, next_offset, tag, prop_len, node_name_len;
+    const struct fdt_property *prop;
+    const char *node_name, *prop_name;
+
+    wa_buf = cpu_physical_memory_map(wa_addr, &map_len, 1);
+    if (!wa_buf) {
+        rc = CC_RET_ERROR;
+        goto error_exit;
+    }
+    wa_buf_int = wa_buf;
+
+    drc_index = *(uint32_t *)wa_buf;
+    drc_entry = spapr_find_drc_entry(drc_index);
+    if (!drc_entry) {
+        rc = -1;
+        goto error_exit;
+    }
+
+    ccs = &drc_entry->cc_state;
+    if (ccs->state == CC_STATE_PENDING) {
+        /* fdt should've been been attached to drc_entry during
+         * realize/hotplug
+         */
+        g_assert(ccs->fdt);
+        ccs->depth = 0;
+        ccs->offset = ccs->offset_start;
+        ccs->state = CC_STATE_ACTIVE;
+    }
+
+    if (ccs->state == CC_STATE_IDLE) {
+        rc = -1;
+        goto error_exit;
+    }
+
+retry:
+    tag = fdt_next_tag(ccs->fdt, ccs->offset, &next_offset);
+
+    switch (tag) {
+    case FDT_BEGIN_NODE:
+        ccs->depth++;
+        node_name = fdt_get_name(ccs->fdt, ccs->offset, &node_name_len);
+        wa_buf_int[CC_IDX_NODE_NAME_OFFSET] = CC_VAL_DATA_OFFSET;
+        strcpy(wa_buf + wa_buf_int[CC_IDX_NODE_NAME_OFFSET], node_name);
+        rc = CC_RET_NEXT_CHILD;
+        break;
+    case FDT_END_NODE:
+        ccs->depth--;
+        if (ccs->depth == 0) {
+            /* reached the end of top-level node, declare success */
+            ccs->state = CC_STATE_PENDING;
+            rc = CC_RET_SUCCESS;
+        } else {
+            rc = CC_RET_PREV_PARENT;
+        }
+        break;
+    case FDT_PROP:
+        prop = fdt_get_property_by_offset(ccs->fdt, ccs->offset, &prop_len);
+        prop_name = fdt_string(ccs->fdt, fdt32_to_cpu(prop->nameoff));
+        wa_buf_int[CC_IDX_PROP_NAME_OFFSET] = CC_VAL_DATA_OFFSET;
+        wa_buf_int[CC_IDX_PROP_LEN] = prop_len;
+        wa_buf_int[CC_IDX_PROP_DATA_OFFSET] =
+            CC_VAL_DATA_OFFSET + strlen(prop_name) + 1;
+        strcpy(wa_buf + wa_buf_int[CC_IDX_PROP_NAME_OFFSET], prop_name);
+        memcpy(wa_buf + wa_buf_int[CC_IDX_PROP_DATA_OFFSET],
+               prop->data, prop_len);
+        rc = CC_RET_NEXT_PROPERTY;
+        break;
+    case FDT_END:
+        rc = CC_RET_ERROR;
+        break;
+    default:
+        ccs->offset = next_offset;
+        goto retry;
+    }
+
+    ccs->offset = next_offset;
+
+error_exit:
+    cpu_physical_memory_unmap(wa_buf, 0x1024, 1, 0x1024);
+    rtas_st(rets, 0, rc);
+}
+
 static int pci_spapr_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;
@@ -1239,6 +1348,8 @@ void spapr_pci_rtas_init(void)
     spapr_rtas_register("set-power-level", rtas_set_power_level);
     spapr_rtas_register("get-power-level", rtas_get_power_level);
     spapr_rtas_register("get-sensor-state", rtas_get_sensor_state);
+    spapr_rtas_register("ibm,configure-connector",
+                        rtas_ibm_configure_connector);
 }
 
 static void spapr_pci_register_types(void)
