@@ -36,6 +36,16 @@
 
 #include "hw/pci/pci_bus.h"
 
+/* #define DEBUG_SPAPR */
+
+#ifdef DEBUG_SPAPR
+#define DPRINTF(fmt, ...) \
+    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
+#else
+#define DPRINTF(fmt, ...) \
+    do { } while (0)
+#endif
+
 /* Copied from the kernel arch/powerpc/platforms/pseries/msi.c */
 #define RTAS_QUERY_FN           0
 #define RTAS_CHANGE_FN          1
@@ -46,6 +56,31 @@
 /* Interrupt types to return on RTAS_CHANGE_* */
 #define RTAS_TYPE_MSI           1
 #define RTAS_TYPE_MSIX          2
+
+/* For set-indicator RTAS interface */
+#define INDICATOR_ISOLATION_MASK            0x0001   /* 9001 one bit */
+#define INDICATOR_GLOBAL_INTERRUPT_MASK     0x0002   /* 9005 one bit */
+#define INDICATOR_ERROR_LOG_MASK            0x0004   /* 9006 one bit */
+#define INDICATOR_IDENTIFY_MASK             0x0008   /* 9007 one bit */
+#define INDICATOR_RESET_MASK                0x0010   /* 9009 one bit */
+#define INDICATOR_DR_MASK                   0x00e0   /* 9002 three bits */
+#define INDICATOR_ALLOCATION_MASK           0x0300   /* 9003 two bits */
+#define INDICATOR_EPOW_MASK                 0x1c00   /* 9 three bits */
+
+#define INDICATOR_ISOLATION_SHIFT           0x00     /* bit 0 */
+#define INDICATOR_GLOBAL_INTERRUPT_SHIFT    0x01     /* bit 1 */
+#define INDICATOR_ERROR_LOG_SHIFT           0x02     /* bit 2 */
+#define INDICATOR_IDENTIFY_SHIFT            0x03     /* bit 3 */
+#define INDICATOR_RESET_SHIFT               0x04     /* bit 4 */
+#define INDICATOR_DR_SHIFT                  0x05     /* bits 5-7 */
+#define INDICATOR_ALLOCATION_SHIFT          0x08     /* bits 8-9 */
+#define INDICATOR_EPOW_SHIFT                0x0a     /* bits 10-12 */
+
+#define DECODE_DRC_STATE(state, m, s)                  \
+    ((((uint32_t)(state) & (uint32_t)(m))) >> (s))
+
+#define ENCODE_DRC_STATE(val, m, s) \
+    (((uint32_t)(val) << (s)) & (uint32_t)(m))
 
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
@@ -422,6 +457,80 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
     rtas_st(rets, 2, 1);/* 0 == level; 1 == edge */
 }
 
+static void rtas_set_indicator(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                               uint32_t token, uint32_t nargs,
+                               target_ulong args, uint32_t nret,
+                               target_ulong rets)
+{
+    uint32_t indicator = rtas_ld(args, 0);
+    uint32_t drc_index = rtas_ld(args, 1);
+    uint32_t indicator_state = rtas_ld(args, 2);
+    uint32_t encoded = 0, shift = 0, mask = 0;
+    uint32_t *pind;
+    sPAPRDrcEntry *drc_entry = NULL;
+
+    if (drc_index == 0) { /* platform indicator */
+        pind = &spapr->state;
+    } else {
+        drc_entry = spapr_find_drc_entry(drc_index);
+        if (!drc_entry) {
+            DPRINTF("rtas_set_indicator: unable to find drc_entry for %x",
+                    drc_index);
+            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+            return;
+        }
+        pind = &drc_entry->state;
+    }
+
+    switch (indicator) {
+    case 9:  /* EPOW */
+        shift = INDICATOR_EPOW_SHIFT;
+        mask = INDICATOR_EPOW_MASK;
+        break;
+    case 9001: /* Isolation state */
+        /* encode the new value into the correct bit field */
+        shift = INDICATOR_ISOLATION_SHIFT;
+        mask = INDICATOR_ISOLATION_MASK;
+        break;
+    case 9002: /* DR */
+        shift = INDICATOR_DR_SHIFT;
+        mask = INDICATOR_DR_MASK;
+        break;
+    case 9003: /* Allocation State */
+        shift = INDICATOR_ALLOCATION_SHIFT;
+        mask = INDICATOR_ALLOCATION_MASK;
+        break;
+    case 9005: /* global interrupt */
+        shift = INDICATOR_GLOBAL_INTERRUPT_SHIFT;
+        mask = INDICATOR_GLOBAL_INTERRUPT_MASK;
+        break;
+    case 9006: /* error log */
+        shift = INDICATOR_ERROR_LOG_SHIFT;
+        mask = INDICATOR_ERROR_LOG_MASK;
+        break;
+    case 9007: /* identify */
+        shift = INDICATOR_IDENTIFY_SHIFT;
+        mask = INDICATOR_IDENTIFY_MASK;
+        break;
+    case 9009: /* reset */
+        shift = INDICATOR_RESET_SHIFT;
+        mask = INDICATOR_RESET_MASK;
+        break;
+    default:
+        DPRINTF("rtas_set_indicator: indicator not implemented: %d",
+                indicator);
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    encoded = ENCODE_DRC_STATE(indicator_state, mask, shift);
+    /* clear the current indicator value */
+    *pind &= ~mask;
+    /* set the new value */
+    *pind |= encoded;
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+}
+
 static int pci_spapr_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;
@@ -643,6 +752,14 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
 
         sphb->lsi_table[i].irq = irq;
     }
+
+    /* make sure the platform EPOW sensor is initialized - the
+     * guest will probe it when there is a hotplug event.
+     */
+    spapr->state &= ~(uint32_t)INDICATOR_EPOW_MASK;
+    spapr->state |= ENCODE_DRC_STATE(0,
+                                     INDICATOR_EPOW_MASK,
+                                     INDICATOR_EPOW_SHIFT);
 
     if (!info->finish_realize) {
         error_setg(errp, "finish_realize not defined");
@@ -1023,6 +1140,7 @@ void spapr_pci_rtas_init(void)
                             rtas_ibm_query_interrupt_source_number);
         spapr_rtas_register("ibm,change-msi", rtas_ibm_change_msi);
     }
+    spapr_rtas_register("set-indicator", rtas_set_indicator);
 }
 
 static void spapr_pci_register_types(void)
