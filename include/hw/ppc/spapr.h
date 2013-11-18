@@ -402,6 +402,7 @@ typedef struct ConfigureConnectorState {
     void *fdt;
     int offset;
     int depth;
+    PCIDevice *dev;
     enum {
         CC_STATE_IDLE = 0,
         CC_STATE_PENDING = 1,

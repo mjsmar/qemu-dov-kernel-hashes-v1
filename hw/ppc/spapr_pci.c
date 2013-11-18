@@ -55,6 +55,10 @@
         }                                                          \
     } while (0)
 
+static void fill_resource_props(PCIDevice *d, int bus_num,
+                                uint32_t *reg, int *reg_size,
+                                uint32_t *assigned, int *assigned_size);
+
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
     sPAPRPHBState *sphb;
@@ -882,7 +886,7 @@ static void fill_resource_props(PCIDevice *d, int bus_num,
                         (PCI_SLOT(d->devfn) << 3) | PCI_FUNC(d->devfn));
     int i, idx = 0;
 
-    reg[0] = dev_id << 8;
+    reg[0] = cpu_to_be32(dev_id << 8);
 
     for (i = 0; i < PCI_NUM_REGIONS; i++) {
         if (!d->io_regions[i].size) {
@@ -890,17 +894,17 @@ static void fill_resource_props(PCIDevice *d, int bus_num,
         }
         reg_row = &reg[(idx + 1) * RESOURCE_CELLS_TOTAL];
         assigned_row = &assigned[idx * RESOURCE_CELLS_TOTAL];
-        reg_row[0] = (dev_id << 8) | (pci_bar(d, i) & 0xff);
+        reg_row[0] = cpu_to_be32((dev_id << 8) | (pci_bar(d, i) & 0xff));
         if (d->io_regions[i].type & PCI_BASE_ADDRESS_SPACE_IO) {
-            reg_row[0] |= 0x01000000;
+            reg_row[0] |= cpu_to_be32(0x01000000);
         } else {
-            reg_row[0] |= 0x02000000;
+            reg_row[0] |= cpu_to_be32(0x02000000);
         }
-        assigned_row[0] = reg_row[0] | 0x80000000;
-        assigned_row[3] = reg_row[3] = d->io_regions[i].size >> 32;
-        assigned_row[4] = reg_row[4] = d->io_regions[i].size;
-        assigned_row[1] = d->io_regions[i].addr >> 32;
-        assigned_row[2] = d->io_regions[i].addr;
+        assigned_row[0] = cpu_to_be32(reg_row[0] | 0x80000000);
+        assigned_row[3] = reg_row[3] = cpu_to_be32(d->io_regions[i].size >> 32);
+        assigned_row[4] = reg_row[4] = cpu_to_be32(d->io_regions[i].size);
+        assigned_row[1] = cpu_to_be32(d->io_regions[i].addr >> 32);
+        assigned_row[2] = cpu_to_be32(d->io_regions[i].addr);
         idx++;
     }
 
@@ -1167,6 +1171,7 @@ static int spapr_phb_add_pci_dt(DeviceState *qdev, PCIDevice *dev)
     ccs->fdt = fdt;
     ccs->offset = offset;
     ccs->state = CC_STATE_PENDING;
+    ccs->dev = dev;
 
     return 0;
 }
@@ -1496,6 +1501,49 @@ PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
 #define b_fff(x)        b_x((x), 8, 3)  /* function number */
 #define b_rrrrrrrr(x)   b_x((x), 0, 8)  /* register number */
 
+static void spapr_create_drc_pci_dt_entries(sPAPRPHBState *phb, void *fdt)
+{
+    /* TODO: this should probably match hotplug fdt */
+    DrcEntry *drc_table, *drc_entry_slot;
+    int i, bus_off = fdt_path_offset(fdt, "/pci@800000020000000");
+
+    drc_table = spapr_phb_to_drc_entry(phb->index + SPAPR_PCI_BASE_BUID);
+    g_assert(drc_table);
+    drc_entry_slot = drc_table->child_entries;
+
+    for (i = SPAPR_DRC_PHB_SLOT_MAX - 1; i >= 0; i--) {
+        char slot_name[1024];
+        uint32_t reg[RESOURCE_CELLS_TOTAL * 8] = { 0 };
+        uint32_t assigned[RESOURCE_CELLS_TOTAL * 8] = { 0 };
+        int reg_size, assigned_size, dev_off;
+
+        if (drc_entry_slot[i].cc_state.state == CC_STATE_IDLE) {
+            continue;
+        }
+        sprintf(slot_name, "pci@%d", i);
+        dev_off = fdt_add_subnode(fdt, bus_off, slot_name);
+        g_assert(dev_off >= 0);
+        fdt_setprop(fdt, dev_off, "ibm,my-drc-index",
+                    &drc_entry_slot[i].drc_index,
+                    sizeof(drc_entry_slot[i].drc_index));
+        fdt_setprop(fdt, dev_off, "ibm,loc-code",
+                    &drc_entry_slot[i].drc_index,
+                    sizeof(drc_entry_slot[i].drc_index));
+        fdt_setprop_string(fdt, dev_off, "name", "pci");
+        fill_resource_props(drc_entry_slot[i].cc_state.dev, phb->index,
+                            reg, &reg_size, assigned, &assigned_size);
+        fdt_setprop(fdt, dev_off, "reg", reg, reg_size);
+        fdt_setprop(fdt, dev_off, "assigned-addresses", assigned,
+                    assigned_size);
+        fdt_setprop_cell(fdt, dev_off, "#address-cells",
+                         RESOURCE_CELLS_ADDRESS);
+        fdt_setprop_cell(fdt, dev_off, "#size-cells",
+                         RESOURCE_CELLS_SIZE);
+        fdt_setprop_cell(fdt, bus_off, "#interrupt-cells", 0x1);
+        fdt_end_node(fdt);
+    }
+}
+
 static void spapr_create_drc_phb_dt_entries(void *fdt, int bus_off, int phb_index)
 {
     char char_buf[1024];
@@ -1564,12 +1612,11 @@ static void spapr_create_drc_phb_dt_entries(void *fdt, int bus_off, int phb_inde
         g_warning("error adding 'ibm,drc-types' field for PHB FDT");
     }
 
-/* assume that we will support drmgr -c pci
- * in that case we want the initial indicator state to be 0 - "empty"
- * when we hot-plug an adaptor in the slot we need to set the indicator
- * to 1 - "present."
- */
-
+    /* assume that we will support drmgr -c pci
+     * in that case we want the initial indicator state to be 0 - "empty"
+     * when we hot-plug an adaptor in the slot we need to set the indicator
+     * to 1 - "present."
+     */
 
     /* ibm,indicator-9003 */
     memset(int_buf, 0, sizeof(int_buf));
@@ -1676,31 +1723,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
                  phb->dma_window_size);
     fdt_end_node(fdt);
 
-    /* TODO: this should probably match hotplug fdt */
-    char slot_name[1024];
-    DrcEntry *drc_table, *drc_entry_slot;
-    drc_table = spapr_phb_to_drc_entry(phb->index + SPAPR_PCI_BASE_BUID);
-    g_assert(drc_table);
-    drc_entry_slot = drc_table->child_entries;
-    for (i = SPAPR_DRC_PHB_SLOT_MAX - 1; i >= 0; i--) {
-        if (drc_entry_slot[i].cc_state.state == CC_STATE_IDLE) {
-            g_warning("idx slot state: %d is idle", i);
-            continue;
-        }
-        sprintf(slot_name, "ethernet@%d", i);
-        g_warning("creating boot-time fdt entry for %s", slot_name);
-        bus_off = fdt_path_offset(fdt, "/pci@800000020000000");
-        g_warning("current bus offset: %d", bus_off);
-        int dev_off = fdt_add_subnode(fdt, bus_off, slot_name);
-        g_assert(dev_off >= 0);
-        fdt_setprop(fdt, dev_off, "ibm,my-drc-index",
-                    &drc_entry_slot[i].drc_index,
-                    sizeof(drc_entry_slot[i].drc_index));
-        fdt_setprop(fdt, dev_off, "ibm,loc-code",
-                    &drc_entry_slot[i].drc_index,
-                    sizeof(drc_entry_slot[i].drc_index));
-        fdt_end_node(fdt);
-    }
+    spapr_create_drc_pci_dt_entries(phb, fdt);
 
     return 0;
 }
