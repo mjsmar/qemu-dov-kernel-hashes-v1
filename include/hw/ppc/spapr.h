@@ -70,6 +70,9 @@ typedef struct sPAPREnvironment {
 
     /* state for Dynamic Reconfiguration Connectors */
     sPAPRDrcEntry drc_table[SPAPR_DRC_TABLE_SIZE];
+
+    /* Platform state - sensors and indicators */
+    uint32_t state;
 } sPAPREnvironment;
 
 #define H_SUCCESS         0
