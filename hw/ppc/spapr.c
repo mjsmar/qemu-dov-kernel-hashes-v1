@@ -336,6 +336,143 @@ static size_t create_page_sizes_prop(CPUPPCState *env, uint32_t *prop,
     return (p - prop) * sizeof(uint32_t);
 }
 
+sPAPRDrcEntry *spapr_phb_to_drc_entry(uint64_t buid)
+{
+    int i;
+
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        if (spapr->drc_table[i].phb_buid == buid) {
+            return &spapr->drc_table[i];
+        }
+     }
+
+     return NULL;
+}
+
+static void spapr_init_drc_table(void)
+{
+    int i;
+
+    memset(spapr->drc_table, 0, sizeof(spapr->drc_table));
+
+    /* For now we only care about PHB entries */
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        spapr->drc_table[i].drc_index = 0x2000001 + i;
+    }
+}
+
+sPAPRDrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state)
+{
+    sPAPRDrcEntry *empty_drc = NULL;
+    sPAPRDrcEntry *found_drc = NULL;
+    int i, phb_index;
+
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        if (spapr->drc_table[i].phb_buid == 0) {
+            empty_drc = &spapr->drc_table[i];
+        }
+
+        if (spapr->drc_table[i].phb_buid == buid) {
+            found_drc = &spapr->drc_table[i];
+            break;
+        }
+    }
+
+    if (found_drc) {
+        return found_drc;
+    }
+
+    if (empty_drc) {
+        empty_drc->phb_buid = buid;
+        empty_drc->state = state;
+        empty_drc->cc_state.fdt = NULL;
+        empty_drc->cc_state.offset = 0;
+        empty_drc->cc_state.depth = 0;
+        empty_drc->cc_state.state = CC_STATE_IDLE;
+        empty_drc->child_entries =
+            g_malloc0(sizeof(sPAPRDrcEntry) * SPAPR_DRC_PHB_SLOT_MAX);
+        phb_index = buid - SPAPR_PCI_BASE_BUID;
+        for (i = 0; i < SPAPR_DRC_PHB_SLOT_MAX; i++) {
+            empty_drc->child_entries[i].drc_index =
+                SPAPR_DRC_DEV_ID_BASE + (phb_index << 8) + (i << 3);
+        }
+        return empty_drc;
+    }
+
+    return NULL;
+}
+
+static void spapr_create_drc_dt_entries(void *fdt)
+{
+    char char_buf[1024];
+    uint32_t int_buf[SPAPR_DRC_TABLE_SIZE + 1];
+    uint32_t *entries;
+    int offset, fdt_offset;
+    int i, ret;
+
+    fdt_offset = fdt_path_offset(fdt, "/");
+
+    /* ibm,drc-indexes */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = SPAPR_DRC_TABLE_SIZE;
+
+    for (i = 1; i <= SPAPR_DRC_TABLE_SIZE; i++) {
+        int_buf[i] = spapr->drc_table[i-1].drc_index;
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-indexes", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-indexes property\n");
+    }
+
+    /* ibm,drc-power-domains */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = SPAPR_DRC_TABLE_SIZE;
+
+    for (i = 1; i <= SPAPR_DRC_TABLE_SIZE; i++) {
+        int_buf[i] = 0xffffffff;
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-power-domains", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-power-domains property\n");
+    }
+
+    /* ibm,drc-names */
+    memset(char_buf, 0, sizeof(char_buf));
+    entries = (uint32_t *)&char_buf[0];
+    *entries = SPAPR_DRC_TABLE_SIZE;
+    offset = sizeof(*entries);
+
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        offset += sprintf(char_buf + offset, "PHB %d", i + 1);
+        char_buf[offset++] = '\0';
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-names", char_buf, offset);
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-names property\n");
+    }
+
+    /* ibm,drc-types */
+    memset(char_buf, 0, sizeof(char_buf));
+    entries = (uint32_t *)&char_buf[0];
+    *entries = SPAPR_DRC_TABLE_SIZE;
+    offset = sizeof(*entries);
+
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        offset += sprintf(char_buf + offset, "PHB");
+        char_buf[offset++] = '\0';
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-types", char_buf, offset);
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-types property\n");
+    }
+}
+
 #define _FDT(exp) \
     do { \
         int ret = (exp);                                           \
@@ -728,6 +865,7 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     char *bootlist;
     void *fdt;
     sPAPRPHBState *phb;
+    sPAPRDrcEntry *drc_entry;
 
     fdt = g_malloc(FDT_MAX_SIZE);
 
@@ -747,6 +885,8 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     }
 
     QLIST_FOREACH(phb, &spapr->phbs, list) {
+        drc_entry = spapr_phb_to_drc_entry(phb->buid);
+        g_assert(drc_entry);
         ret = spapr_populate_pci_dt(phb, PHANDLE_XICP, fdt);
     }
 
@@ -785,6 +925,8 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     if (!spapr->has_graphics) {
         spapr_populate_chosen_stdout(fdt, spapr->vio_bus);
     }
+
+    spapr_create_drc_dt_entries(fdt);
 
     _FDT((fdt_pack(fdt)));
 
@@ -1427,6 +1569,7 @@ static void ppc_spapr_init(MachineState *machine)
     spapr_pci_msi_init(spapr, SPAPR_PCI_MSI_WINDOW);
     spapr_pci_rtas_init();
 
+    spapr_init_drc_table();
     phb = spapr_create_phb(spapr, 0);
 
     for (i = 0; i < nb_nics; i++) {

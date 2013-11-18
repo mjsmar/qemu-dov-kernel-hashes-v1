@@ -10,6 +10,36 @@ struct sPAPRNVRAM;
 
 #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
 
+/* For dlparable/hotpluggable slots */
+#define SPAPR_DRC_TABLE_SIZE    32
+#define SPAPR_DRC_PHB_SLOT_MAX  32
+#define SPAPR_DRC_DEV_ID_BASE   0x40000000
+
+typedef struct sPAPRConfigureConnectorState {
+    void *fdt;
+    int offset_start;
+    int offset;
+    int depth;
+    PCIDevice *dev;
+    enum {
+        CC_STATE_IDLE = 0,
+        CC_STATE_PENDING = 1,
+        CC_STATE_ACTIVE,
+    } state;
+} sPAPRConfigureConnectorState;
+
+typedef struct sPAPRDrcEntry sPAPRDrcEntry;
+
+struct sPAPRDrcEntry {
+    uint32_t drc_index;
+    uint64_t phb_buid;
+    void *fdt;
+    int fdt_offset;
+    uint32_t state;
+    sPAPRConfigureConnectorState cc_state;
+    sPAPRDrcEntry *child_entries;
+};
+
 typedef struct sPAPREnvironment {
     struct VIOsPAPRBus *vio_bus;
     QLIST_HEAD(, sPAPRPHBState) phbs;
@@ -39,6 +69,9 @@ typedef struct sPAPREnvironment {
     int htab_save_index;
     bool htab_first_pass;
     int htab_fd;
+
+    /* state for Dynamic Reconfiguration Connectors */
+    sPAPRDrcEntry drc_table[SPAPR_DRC_TABLE_SIZE];
 } sPAPREnvironment;
 
 #define H_SUCCESS         0
@@ -425,5 +458,7 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
                  uint32_t liobn, uint64_t window, uint32_t size);
 int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet);
+sPAPRDrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state);
+sPAPRDrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
 
 #endif /* !defined (__HW_SPAPR_H__) */

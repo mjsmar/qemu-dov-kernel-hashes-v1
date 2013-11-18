@@ -551,6 +551,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
             + sphb->index * SPAPR_PCI_WINDOW_SPACING;
         sphb->mem_win_addr = windows_base + SPAPR_PCI_MMIO_WIN_OFF;
         sphb->io_win_addr = windows_base + SPAPR_PCI_IO_WIN_OFF;
+        spapr_add_phb_to_drc_table(sphb->buid, 2 /* Unusable */);
     }
 
     if (sphb->buid == -1) {
