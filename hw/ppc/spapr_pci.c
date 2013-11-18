@@ -478,6 +478,26 @@ static void rtas_set_indicator(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, 0);
 }
 
+static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                                 uint32_t token, uint32_t nargs,
+                                 target_ulong args, uint32_t nret,
+                                 target_ulong rets)
+{
+    uint32_t power_lvl = rtas_ld(args, 1);
+    rtas_st(rets, 0, 0);
+    rtas_st(rets, 1, power_lvl);
+}
+
+static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args, uint32_t nret,
+                                  target_ulong rets)
+{
+    /* return SUCCESS with a power level of 100 */
+    rtas_st(rets, 0, 0);
+    rtas_st(rets, 1, 100);
+}
+
 static int pci_spapr_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;
@@ -939,6 +959,8 @@ void spapr_pci_rtas_init(void)
         spapr_rtas_register("ibm,change-msi", rtas_ibm_change_msi);
     }
     spapr_rtas_register("set-indicator", rtas_set_indicator);
+    spapr_rtas_register("set-power-level", rtas_set_power_level);
+    spapr_rtas_register("get-power-level", rtas_get_power_level);
 }
 
 static void spapr_pci_register_types(void)
