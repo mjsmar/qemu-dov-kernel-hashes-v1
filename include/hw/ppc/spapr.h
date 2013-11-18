@@ -3,6 +3,7 @@
 
 #include "sysemu/dma.h"
 #include "hw/ppc/xics.h"
+#include "hw/ppc/spapr_drc.h"
 
 struct VIOsPAPRBus;
 struct sPAPRPHBState;
@@ -30,7 +31,7 @@ typedef struct sPAPREnvironment {
     struct PPCTimebase tb;
     bool has_graphics;
 
-    uint32_t epow_irq;
+    uint32_t check_exception_irq;
     Notifier epow_notifier;
 
     /* Migration state */
@@ -486,5 +487,7 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
                  uint32_t liobn, uint64_t window, uint32_t size);
 int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet);
+void spapr_hotplug_req_add_event(sPAPRDRConnector *drc);
+void spapr_hotplug_req_remove_event(sPAPRDRConnector *drc);
 
 #endif /* !defined (__HW_SPAPR_H__) */
