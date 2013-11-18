@@ -66,6 +66,7 @@
 #define INDICATOR_DR_MASK                   0x00e0   /* 9002 three bits */
 #define INDICATOR_ALLOCATION_MASK           0x0300   /* 9003 two bits */
 #define INDICATOR_EPOW_MASK                 0x1c00   /* 9 three bits */
+#define INDICATOR_ENTITY_SENSE_MASK         0xe000   /* 9003 three bits */
 
 #define INDICATOR_ISOLATION_SHIFT           0x00     /* bit 0 */
 #define INDICATOR_GLOBAL_INTERRUPT_SHIFT    0x01     /* bit 1 */
@@ -75,6 +76,10 @@
 #define INDICATOR_DR_SHIFT                  0x05     /* bits 5-7 */
 #define INDICATOR_ALLOCATION_SHIFT          0x08     /* bits 8-9 */
 #define INDICATOR_EPOW_SHIFT                0x0a     /* bits 10-12 */
+#define INDICATOR_ENTITY_SENSE_SHIFT        0x0d     /* bits 13-15 */
+
+#define INDICATOR_ENTITY_SENSE_EMPTY    0
+#define INDICATOR_ENTITY_SENSE_PRESENT  1
 
 #define DECODE_DRC_STATE(state, m, s)                  \
     ((((uint32_t)(state) & (uint32_t)(m))) >> (s))
@@ -549,6 +554,75 @@ static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     /* return SUCCESS with a power level of 100 */
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
     rtas_st(rets, 1, 100);
+}
+
+static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args, uint32_t nret,
+                                  target_ulong rets)
+{
+    uint32_t sensor = rtas_ld(args, 0);
+    uint32_t drc_index = rtas_ld(args, 1);
+    uint32_t sensor_state = 0, decoded = 0;
+    uint32_t shift = 0, mask = 0;
+    sPAPRDrcEntry *drc_entry = NULL;
+
+    if (drc_index == 0) {  /* platform state sensor/indicator */
+        sensor_state = spapr->state;
+    } else { /* we should have a drc entry */
+        drc_entry = spapr_find_drc_entry(drc_index);
+        if (!drc_entry) {
+            DPRINTF("unable to find DRC entry for index %x", drc_index);
+            sensor_state = 0; /* empty */
+            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+            return;
+        }
+        sensor_state = drc_entry->state;
+    }
+    switch (sensor) {
+    case 9:  /* EPOW */
+        shift = INDICATOR_EPOW_SHIFT;
+        mask = INDICATOR_EPOW_MASK;
+        break;
+    case 9001: /* Isolation state */
+        /* encode the new value into the correct bit field */
+        shift = INDICATOR_ISOLATION_SHIFT;
+        mask = INDICATOR_ISOLATION_MASK;
+        break;
+    case 9002: /* DR */
+        shift = INDICATOR_DR_SHIFT;
+        mask = INDICATOR_DR_MASK;
+        break;
+    case 9003: /* entity sense */
+        shift = INDICATOR_ENTITY_SENSE_SHIFT;
+        mask = INDICATOR_ENTITY_SENSE_MASK;
+        break;
+    case 9005: /* global interrupt */
+        shift = INDICATOR_GLOBAL_INTERRUPT_SHIFT;
+        mask = INDICATOR_GLOBAL_INTERRUPT_MASK;
+        break;
+    case 9006: /* error log */
+        shift = INDICATOR_ERROR_LOG_SHIFT;
+        mask = INDICATOR_ERROR_LOG_MASK;
+        break;
+    case 9007: /* identify */
+        shift = INDICATOR_IDENTIFY_SHIFT;
+        mask = INDICATOR_IDENTIFY_MASK;
+        break;
+    case 9009: /* reset */
+        shift = INDICATOR_RESET_SHIFT;
+        mask = INDICATOR_RESET_MASK;
+        break;
+    default:
+        DPRINTF("rtas_get_sensor_state: sensor not implemented: %d",
+                sensor);
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    decoded = DECODE_DRC_STATE(sensor_state, mask, shift);
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+    rtas_st(rets, 1, decoded);
 }
 
 static int pci_spapr_swizzle(int slot, int pin)
@@ -1162,6 +1236,7 @@ void spapr_pci_rtas_init(void)
     spapr_rtas_register("set-indicator", rtas_set_indicator);
     spapr_rtas_register("set-power-level", rtas_set_power_level);
     spapr_rtas_register("get-power-level", rtas_get_power_level);
+    spapr_rtas_register("get-sensor-state", rtas_get_sensor_state);
 }
 
 static void spapr_pci_register_types(void)
