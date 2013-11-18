@@ -38,6 +38,9 @@ typedef struct sPAPREnvironment {
     int htab_save_index;
     bool htab_first_pass;
     int htab_fd;
+
+    /* platform state - sensors and indicators */
+    uint32_t state;
 } sPAPREnvironment;
 
 #define H_SUCCESS         0
@@ -333,6 +336,31 @@ extern DrcEntry drc_table[SPAPR_DRC_TABLE_SIZE];
 DrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state);
 DrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
 DrcEntry *spapr_find_drc_entry(int drc_index);
+
+/* For set-indicator RTAS interface */
+#define INDICATOR_ISOLATION_MASK            0x0001   /* 9001 one bit */
+#define INDICATOR_GLOBAL_INTERRUPT_MASK     0x0002   /* 9005 one bit */
+#define INDICATOR_ERROR_LOG_MASK            0x0004   /* 9006 one bit */
+#define INDICATOR_IDENTIFY_MASK             0x0008   /* 9007 one bit */
+#define INDICATOR_RESET_MASK                0x0010   /* 9009 one bit */
+#define INDICATOR_DR_MASK                   0x00e0   /* 9002 three bits */
+#define INDICATOR_ALLOCATION_MASK           0x0300   /* 9003 two bits */
+#define INDICATOR_EPOW_MASK                 0x1c00   /* 9 three bits */
+
+#define INDICATOR_ISOLATION_SHIFT           0x00     /* bit 0 */
+#define INDICATOR_GLOBAL_INTERRUPT_SHIFT    0x01     /* bit 1 */
+#define INDICATOR_ERROR_LOG_SHIFT           0x02     /* bit 2 */
+#define INDICATOR_IDENTIFY_SHIFT            0x03     /* bit 3 */
+#define INDICATOR_RESET_SHIFT               0x04     /* bit 4 */
+#define INDICATOR_DR_SHIFT                  0x05     /* bits 5-7 */
+#define INDICATOR_ALLOCATION_SHIFT          0x08     /* bits 8-9 */
+#define INDICATOR_EPOW_SHIFT                0x0a     /* bits 10-12 */
+
+#define DECODE_DRC_STATE(state, m, s)                  \
+    ((((uint32_t)(state) & (uint32_t)(m))) >> (s))
+
+#define ENCODE_DRC_STATE(val, m, s) \
+    (((uint32_t)(val) << (s)) & (uint32_t)(m))
 
 extern sPAPREnvironment *spapr;
 
