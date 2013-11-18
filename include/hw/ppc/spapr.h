@@ -302,7 +302,7 @@ typedef struct sPAPREnvironment {
 #define KVMPPC_H_LOGICAL_MEMOP  (KVMPPC_HCALL_BASE + 0x1)
 #define KVMPPC_HCALL_MAX        KVMPPC_H_LOGICAL_MEMOP
 
-/* For set-indicator RTAS interface */
+/* For set-indicator/get-sensor-state RTAS interfaces */
 #define INDICATOR_ISOLATION_MASK            0x0001   /* 9001 one bit */
 #define INDICATOR_GLOBAL_INTERRUPT_MASK     0x0002   /* 9005 one bit */
 #define INDICATOR_ERROR_LOG_MASK            0x0004   /* 9006 one bit */
@@ -311,6 +311,7 @@ typedef struct sPAPREnvironment {
 #define INDICATOR_DR_MASK                   0x00e0   /* 9002 three bits */
 #define INDICATOR_ALLOCATION_MASK           0x0300   /* 9003 two bits */
 #define INDICATOR_EPOW_MASK                 0x1c00   /* 9 three bits */
+#define SENSOR_ENTITY_SENSE_MASK            0xe000   /* 9003 three bits */
 
 #define INDICATOR_ISOLATION_SHIFT           0x00     /* bit 0 */
 #define INDICATOR_GLOBAL_INTERRUPT_SHIFT    0x01     /* bit 1 */
@@ -320,8 +321,10 @@ typedef struct sPAPREnvironment {
 #define INDICATOR_DR_SHIFT                  0x05     /* bits 5-7 */
 #define INDICATOR_ALLOCATION_SHIFT          0x08     /* bits 8-9 */
 #define INDICATOR_EPOW_SHIFT                0x0a     /* bits 10-12 */
+#define SENSOR_ENTITY_SENSE_SHIFT           0x0d     /* bits 13-15 */
 
 #define NO_SUCH_INDICATOR -3
+#define DR_ENTITY_SENSE_PRESENT 1
 
 #define DECODE_DRC_STATE(state, m, s)                  \
     ((((uint32_t)(state) & (uint32_t)(m))) >> (s))
