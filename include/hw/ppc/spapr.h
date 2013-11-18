@@ -3,10 +3,12 @@
 
 #include "sysemu/dma.h"
 #include "hw/ppc/xics.h"
+#include "hw/ppc/spapr_drc.h"
 
 struct VIOsPAPRBus;
 struct sPAPRPHBState;
 struct sPAPRNVRAM;
+typedef struct sPAPREventLogEntry sPAPREventLogEntry;
 
 #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
 
@@ -29,8 +31,9 @@ typedef struct sPAPREnvironment {
     struct PPCTimebase tb;
     bool has_graphics;
 
-    uint32_t epow_irq;
+    uint32_t check_exception_irq;
     Notifier epow_notifier;
+    QTAILQ_HEAD(, sPAPREventLogEntry) pending_events;
 
     /* Migration state */
     int htab_save_index;
@@ -482,6 +485,12 @@ struct sPAPRTCETable {
     QLIST_ENTRY(sPAPRTCETable) list;
 };
 
+struct sPAPREventLogEntry {
+    int log_type;
+    void *data;
+    QTAILQ_ENTRY(sPAPREventLogEntry) next;
+};
+
 void spapr_events_init(sPAPREnvironment *spapr);
 void spapr_events_fdt_skel(void *fdt, uint32_t epow_irq);
 int spapr_h_cas_compose_response(target_ulong addr, target_ulong size);
@@ -496,5 +505,7 @@ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
                  uint32_t liobn, uint64_t window, uint32_t size);
 int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet);
+void spapr_hotplug_req_add_event(sPAPRDRConnector *drc);
+void spapr_hotplug_req_remove_event(sPAPRDRConnector *drc);
 
 #endif /* !defined (__HW_SPAPR_H__) */
