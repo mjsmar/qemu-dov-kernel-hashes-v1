@@ -705,6 +705,9 @@ static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
 
     g_assert(drc);
     spapr_device_hotplug_add(drc, phb, pdev);
+    if (plugged_dev->hotplugged) {
+        spapr_hotplug_req_add_event(drc);
+    }
 }
 
 static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
@@ -722,6 +725,7 @@ static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
     }
 
     spapr_device_hotplug_remove(drc, phb, pdev);
+    spapr_hotplug_req_remove_event(drc);
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
