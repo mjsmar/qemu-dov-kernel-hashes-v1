@@ -1104,9 +1104,19 @@ static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
     drc_entry_slot->state &= ~(uint32_t)INDICATOR_ENTITY_SENSE_MASK;
     drc_entry_slot->state |= encoded; /* and the slot */
 
+    /* reliable unplug requires we wait for a transition from
+     * UNISOLATED->ISOLATED prior to device removal/deletion.
+     * However, slots populated by devices at boot-time will not
+     * have ever been set by guest tools to an UNISOLATED/populated
+     * state, so set this manually in the case of coldplug devices
+     */
     if (DEVICE(dev)->hotplugged) {
         /* need to allocate memory region for device BARs */
         spapr_map_bars(phb, dev);
+    } else {
+        drc_entry_slot->state |= ENCODE_DRC_STATE(1,
+                                                  INDICATOR_ISOLATION_MASK,
+                                                  INDICATOR_ISOLATION_SHIFT);
     }
 
     /* add OF node for pci device and required OF DT properties */
@@ -1191,13 +1201,21 @@ static void spapr_device_hotplug_remove(DeviceState *qdev, PCIDevice *dev)
 static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
                                DeviceState *plugged_dev, Error **errp)
 {
+    int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
+
     spapr_device_hotplug_add(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
+    if (plugged_dev->hotplugged) {
+        spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+    }
 }
 
 static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
                                  DeviceState *plugged_dev, Error **errp)
 {
+    int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
+
     spapr_device_hotplug_remove(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
+    spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
