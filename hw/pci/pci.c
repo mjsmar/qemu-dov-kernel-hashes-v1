@@ -1035,7 +1035,7 @@ static pcibus_t pci_bar_address(PCIDevice *d,
         /* Check if 32 bit BAR wraps around explicitly.
          * TODO: make priorities correct and remove this work around.
          */
-        if (last_addr <= new_addr || new_addr == 0 || last_addr >= UINT32_MAX) {
+        if (last_addr <= new_addr || last_addr >= UINT32_MAX) {
             return PCI_BAR_UNMAPPED;
         }
         return new_addr;
@@ -1059,8 +1059,7 @@ static pcibus_t pci_bar_address(PCIDevice *d,
     /* XXX: as we cannot support really dynamic
        mappings, we handle specific values as invalid
        mappings. */
-    if (last_addr <= new_addr || new_addr == 0 ||
-        last_addr == PCI_BAR_UNMAPPED) {
+    if (last_addr <= new_addr || last_addr == PCI_BAR_UNMAPPED) {
         return PCI_BAR_UNMAPPED;
     }
 
