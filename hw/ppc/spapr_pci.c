@@ -1049,15 +1049,19 @@ static void spapr_device_hotplug_remove(DeviceState *qdev, PCIDevice *dev)
 static int spapr_device_hotplug(DeviceState *qdev, PCIDevice *dev,
                                 PCIHotplugState state)
 {
+    int slot = PCI_SLOT(dev->devfn);
+
     if (state == PCI_COLDPLUG_ENABLED) {
         return 0;
     }
 
     if (state == PCI_HOTPLUG_ENABLED) {
         spapr_device_hotplug_add(qdev, dev);
+        spapr_pci_hotplug_add_event(qdev, slot);
     } else {
         spapr_device_hotplug_remove(qdev, dev);
         qdev_free(&dev->qdev);
+        spapr_pci_hotplug_remove_event(qdev, slot);
     }
 
     return 0;
