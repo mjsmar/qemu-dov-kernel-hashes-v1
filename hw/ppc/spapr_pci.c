@@ -712,6 +712,10 @@ static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
         return;
     }
     spapr_device_hotplug_add(phb, pdev);
+    if (plugged_dev->hotplugged) {
+        spapr_pci_hotplug_add_event(DEVICE(plug_handler),
+                                    PCI_SLOT(pdev->devfn));
+    }
 }
 
 static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
@@ -727,6 +731,8 @@ static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
     }
 
     spapr_device_hotplug_remove(phb, pdev);
+    spapr_pci_hotplug_remove_event(DEVICE(plug_handler),
+                                   PCI_SLOT(pdev->devfn));
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
