@@ -1035,7 +1035,7 @@ static pcibus_t pci_bar_address(PCIDevice *d,
         new_addr = pci_get_long(d->config + bar) & ~(size - 1);
         last_addr = new_addr + size - 1;
         /* NOTE: we have only 64K ioports on PC */
-        if (last_addr <= new_addr || new_addr == 0 || last_addr > UINT16_MAX) {
+        if (last_addr <= new_addr || last_addr > UINT16_MAX) {
             return PCI_BAR_UNMAPPED;
         }
         return new_addr;
