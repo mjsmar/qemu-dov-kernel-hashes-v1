@@ -277,6 +277,42 @@ static size_t create_page_sizes_prop(CPUPPCState *env, uint32_t *prop,
     return (p - prop) * sizeof(uint32_t);
 }
 
+DrcEntry *spapr_phb_to_drc_entry(uint64_t buid)
+{
+    int i;
+
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        if (drc_table[i].phb_buid == buid) {
+            return &drc_table[i];
+        }
+     }
+
+     return NULL;
+}
+
+DrcEntry *spapr_find_drc_entry(int drc_index)
+{
+    int i, j;
+
+    for (i = 0; i < SPAPR_DRC_TABLE_SIZE; i++) {
+        DrcEntry *phb_entry = &drc_table[i];
+        if (phb_entry->drc_index == drc_index) {
+            return phb_entry;
+        }
+        if (phb_entry->child_entries == NULL) {
+            continue;
+        }
+        for (j = 0; j < SPAPR_DRC_PHB_SLOT_MAX; j++) {
+            DrcEntry *entry = &phb_entry->child_entries[j];
+            if (entry->drc_index == drc_index) {
+                return entry;
+            }
+        }
+     }
+
+     return NULL;
+}
+
 static void spapr_init_drc_table(void)
 {
     int i;

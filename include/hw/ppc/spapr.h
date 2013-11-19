@@ -365,6 +365,8 @@ struct DrcEntry {
 
 extern DrcEntry drc_table[SPAPR_DRC_TABLE_SIZE];
 DrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state);
+DrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
+DrcEntry *spapr_find_drc_entry(int drc_index);
 
 
 extern sPAPREnvironment *spapr;
