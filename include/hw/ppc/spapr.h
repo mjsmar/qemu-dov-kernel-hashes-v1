@@ -460,5 +460,6 @@ int spapr_tcet_dma_dt(void *fdt, int node_off, const char *propname,
                       sPAPRTCETable *tcet);
 sPAPRDrcEntry *spapr_add_phb_to_drc_table(uint64_t buid, uint32_t state);
 sPAPRDrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
+sPAPRDrcEntry *spapr_find_drc_entry(int drc_index);
 
 #endif /* !defined (__HW_SPAPR_H__) */
