@@ -328,6 +328,7 @@ struct DrcEntry {
     void *fdt;
     int fdt_offset;
     uint32_t state;
+    bool awaiting_release;
     ConfigureConnectorState cc_state;
     DrcEntry *child_entries;
 };
