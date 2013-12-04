@@ -36,6 +36,7 @@ struct sPAPRDrcEntry {
     void *fdt;
     int fdt_offset;
     uint32_t state;
+    bool awaiting_release;
     sPAPRConfigureConnectorState cc_state;
     sPAPRDrcEntry *child_entries;
 };
