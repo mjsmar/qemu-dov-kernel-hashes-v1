@@ -568,9 +568,11 @@ static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                  target_ulong args, uint32_t nret,
                                  target_ulong rets)
 {
-    uint32_t power_lvl = rtas_ld(args, 1);
+    /* we currently only use a single, "live insert" powerdomain for
+     * hotplugged/dlpar'd resources, so the power is always live/full (100)
+     */
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
-    rtas_st(rets, 1, power_lvl);
+    rtas_st(rets, 1, 100);
 }
 
 static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
@@ -578,7 +580,6 @@ static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                   target_ulong args, uint32_t nret,
                                   target_ulong rets)
 {
-    /* return SUCCESS with a power level of 100 */
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
     rtas_st(rets, 1, 100);
 }
