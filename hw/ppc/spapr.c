@@ -544,8 +544,6 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
     add_str(hypertas, "hcall-set-mode");
     add_str(qemu_hypertas, "hcall-memop1");
 
-    spapr_init_drc_table();
-
     fdt = g_malloc0(FDT_MAX_SIZE);
     _FDT((fdt_create(fdt, FDT_MAX_SIZE)));
 
@@ -904,7 +902,7 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     }
 
     QLIST_FOREACH(phb, &spapr->phbs, list) {
-        drc_entry = spapr_add_phb_to_drc_table(phb->buid, 2 /* Unusable */);
+        drc_entry = spapr_phb_to_drc_entry(phb->buid);
         g_assert(drc_entry);
         ret = spapr_populate_pci_dt(phb, PHANDLE_XICP, drc_entry->drc_index,
                                     fdt);
@@ -1589,6 +1587,7 @@ static void ppc_spapr_init(QEMUMachineInitArgs *args)
     spapr_pci_msi_init(spapr, SPAPR_PCI_MSI_WINDOW);
     spapr_pci_rtas_init();
 
+    spapr_init_drc_table();
     phb = spapr_create_phb(spapr, 0);
 
     for (i = 0; i < nb_nics; i++) {
