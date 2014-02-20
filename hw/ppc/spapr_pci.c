@@ -913,7 +913,7 @@ static hwaddr spapr_find_bar_addr(sPAPRPHBState *phb, PCIIORegion *r)
     hwaddr increment = size;
     hwaddr limit;
 
-    if (r->type == PCI_BASE_ADDRESS_SPACE_MEMORY) {
+    if (!(r->type & PCI_BASE_ADDRESS_SPACE_IO)) {
         /* beginning portion of mmio address space for bus does not get
          * mapped into system memory, so calculate addr starting at the
          * corresponding offset into mmio as.
@@ -1114,10 +1114,10 @@ static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
         drc_entry_slot->state |= ENCODE_DRC_STATE(1,
                                                   INDICATOR_ISOLATION_MASK,
                                                   INDICATOR_ISOLATION_SHIFT);
+    } else {
+        /* need to allocate memory region for device BARs */
+        spapr_map_bars(phb, dev);
     }
-
-    /* need to allocate memory region for device BARs */
-    spapr_map_bars(phb, dev);
 
     /* add OF node for pci device and required OF DT properties */
     fdt_orig = g_malloc0(FDT_MAX_SIZE);

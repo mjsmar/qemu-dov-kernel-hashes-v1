@@ -1576,6 +1576,9 @@ MemoryRegionSection memory_region_find_subregion(MemoryRegion *mr,
     MemoryRegion *submr = NULL;
 
     QTAILQ_FOREACH(submr, &mr->subregions, subregions_link) {
+        if (!memory_region_size(submr)) {
+            continue;
+        }
         if (!(submr->addr + memory_region_size(submr) - 1 < addr ||
             submr->addr >= addr + size)) {
             break;
