@@ -411,8 +411,8 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 
     /* There is no cached config, allocate MSIs */
     if (!phb->msi_table[ndev].nvec) {
-        irq = spapr_allocate_irq_block(req_num, false,
-                                       ret_intr_type == RTAS_TYPE_MSI);
+        irq = xics_alloc_block(spapr->icp, 0, req_num, false,
+                               ret_intr_type == RTAS_TYPE_MSI);
         if (irq < 0) {
             error_report("Cannot allocate MSIs for device#%d", ndev);
             rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
@@ -1331,7 +1331,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     for (i = 0; i < PCI_NUM_PINS; i++) {
         uint32_t irq;
 
-        irq = spapr_allocate_lsi(0);
+        irq = xics_alloc_block(spapr->icp, 0, 1, true, false);
         if (!irq) {
             error_setg(errp, "spapr_allocate_lsi failed");
             return;
@@ -1411,7 +1411,7 @@ static const VMStateDescription vmstate_spapr_pci_lsi = {
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields      = (VMStateField []) {
-        VMSTATE_UINT32_EQUAL(irq, struct spapr_pci_lsi),
+        VMSTATE_UINT32(irq, struct spapr_pci_lsi),
 
         VMSTATE_END_OF_LIST()
     },

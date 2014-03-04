@@ -463,7 +463,8 @@ static void event_scan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 
 void spapr_events_init(sPAPREnvironment *spapr)
 {
-    spapr->check_exception_irq = spapr_allocate_msi(0);
+    spapr->check_exception_irq = xics_alloc_block(spapr->icp, 0, 1,
+                                                  false, false);
     spapr->epow_notifier.notify = spapr_powerdown_req;
     qemu_register_powerdown_notifier(&spapr->epow_notifier);
     spapr_rtas_register("check-exception", check_exception);

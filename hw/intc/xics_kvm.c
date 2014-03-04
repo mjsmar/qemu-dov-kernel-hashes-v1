@@ -272,10 +272,12 @@ static void ics_kvm_reset(DeviceState *dev)
     ICSState *ics = ICS(dev);
     int i;
 
-    memset(ics->irqs, 0, sizeof(ICSIRQState) * ics->nr_irqs);
     for (i = 0; i < ics->nr_irqs; i++) {
+        ics->irqs[i].server = 0;
         ics->irqs[i].priority = 0xff;
         ics->irqs[i].saved_priority = 0xff;
+        ics->irqs[i].status = 0;
+        /* Do not reset @flags as IRQ might be allocated */
     }
 
     ics_set_kvm_state(ics, 1);

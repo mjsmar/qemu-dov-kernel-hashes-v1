@@ -522,10 +522,12 @@ static void ics_reset(DeviceState *dev)
     ICSState *ics = ICS(dev);
     int i;
 
-    memset(ics->irqs, 0, sizeof(ICSIRQState) * ics->nr_irqs);
     for (i = 0; i < ics->nr_irqs; i++) {
+        ics->irqs[i].server = 0;
         ics->irqs[i].priority = 0xff;
         ics->irqs[i].saved_priority = 0xff;
+        ics->irqs[i].status = 0;
+        /* Do not reset @flags as IRQ might be allocated */
     }
 }
 
@@ -686,6 +688,85 @@ void xics_set_irq_type(XICSState *icp, int irq, bool lsi)
 
     assert(server >= 0);
     ics_set_irq_type(&icp->ics[server], irq, lsi);
+}
+
+#define XICS_IRQ_FREE(ics, n)   \
+    !(ics->irqs[(n) - ics->offset].flags & (XICS_FLAGS_LSI | XICS_FLAGS_MSI))
+
+static int ics_find_block(ICSState *ics, int num, int alignnum)
+{
+    int first, i;
+
+    for (first = 0; first < ics->nr_irqs; first += alignnum) {
+        if (num > (ics->nr_irqs - first)) {
+            return -1;
+        }
+        for (i = first; i < first + num; ++i) {
+            if (!XICS_IRQ_FREE(ics, i + ics->offset)) {
+                break;
+            }
+        }
+        if (i == (first + num)) {
+            return first + ics->offset;
+        }
+    }
+
+    return -1;
+}
+
+int xics_alloc(XICSState *icp, int server, int irq, bool lsi)
+{
+    ICSState *ics = &icp->ics[server];
+
+    if (irq) {
+        assert(server == xics_find_server(icp, irq));
+        if (!XICS_IRQ_FREE(ics, irq)) {
+            trace_xics_alloc_failed(server, irq);
+            return -1;
+        }
+    } else {
+        irq = ics_find_block(ics, 1, 1);
+    }
+
+    ics_set_irq_type(ics, irq, lsi);
+    trace_xics_alloc(server, irq);
+
+    return irq;
+}
+
+/*
+ * Allocate block of consequtive IRQs, returns a number of the first.
+ * If align==true, aligns the first IRQ number to num.
+ */
+int xics_alloc_block(XICSState *icp, int server, int num, bool lsi, bool align)
+{
+    int i, first = -1;
+    ICSState *ics = &icp->ics[server];
+
+    assert(server == 0);
+    /*
+     * MSIMesage::data is used for storing VIRQ so
+     * it has to be aligned to num to support multiple
+     * MSI vectors. MSI-X is not affected by this.
+     * The hint is used for the first IRQ, the rest should
+     * be allocated continuously.
+     */
+    if (align) {
+        assert((num == 1) || (num == 2) || (num == 4) ||
+               (num == 8) || (num == 16) || (num == 32));
+        first = ics_find_block(ics, num, num);
+    } else {
+        first = ics_find_block(ics, num, 1);
+    }
+
+    if (first > 0) {
+        for (i = first; i < first + num; ++i) {
+            ics_set_irq_type(ics, i, lsi);
+        }
+    }
+    trace_xics_alloc_block(server, first, num, lsi, align);
+
+    return first;
 }
 
 /*
