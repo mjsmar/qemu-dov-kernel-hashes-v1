@@ -136,7 +136,6 @@ struct ICSState {
     uint32_t nr_irqs;
     uint32_t offset;
     qemu_irq *qirqs;
-    bool *islsi;
     ICSIRQState *irqs;
     XICSState *icp;
 };
@@ -150,6 +149,9 @@ struct ICSIRQState {
 #define XICS_STATUS_REJECTED           0x4
 #define XICS_STATUS_MASKED_PENDING     0x8
     uint8_t status;
+#define XICS_FLAGS_LSI                 0x1
+#define XICS_FLAGS_MSI                 0x2
+    uint8_t flags;
 };
 
 qemu_irq xics_get_qirq(XICSState *icp, int irq);

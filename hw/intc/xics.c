@@ -438,7 +438,7 @@ static void ics_set_irq(void *opaque, int srcno, int val)
 {
     ICSState *ics = (ICSState *)opaque;
 
-    if (ics->islsi[srcno]) {
+    if (ics->irqs[srcno].flags & XICS_FLAGS_LSI) {
         set_irq_lsi(ics, srcno, val);
     } else {
         set_irq_msi(ics, srcno, val);
@@ -475,7 +475,7 @@ static void ics_write_xive(ICSState *ics, int nr, int server,
 
     trace_xics_ics_write_xive(nr, srcno, server, priority);
 
-    if (ics->islsi[srcno]) {
+    if (ics->irqs[srcno].flags & XICS_FLAGS_LSI) {
         write_xive_lsi(ics, srcno);
     } else {
         write_xive_msi(ics, srcno);
@@ -497,7 +497,7 @@ static void ics_resend(ICSState *ics)
 
     for (i = 0; i < ics->nr_irqs; i++) {
         /* FIXME: filter by server#? */
-        if (ics->islsi[i]) {
+        if (ics->irqs[i].flags & XICS_FLAGS_LSI) {
             resend_lsi(ics, i);
         } else {
             resend_msi(ics, i);
@@ -512,7 +512,7 @@ static void ics_eoi(ICSState *ics, int nr)
 
     trace_xics_ics_eoi(nr);
 
-    if (ics->islsi[srcno]) {
+    if (ics->irqs[srcno].flags & XICS_FLAGS_LSI) {
         irq->status &= ~XICS_STATUS_SENT;
     }
 }
@@ -609,7 +609,6 @@ static void ics_realize(DeviceState *dev, Error **errp)
         return;
     }
     ics->irqs = g_malloc0(ics->nr_irqs * sizeof(ICSIRQState));
-    ics->islsi = g_malloc0(ics->nr_irqs * sizeof(bool));
     ics->qirqs = qemu_allocate_irqs(ics_set_irq, ics, ics->nr_irqs);
 }
 
@@ -646,11 +645,17 @@ qemu_irq xics_get_qirq(XICSState *icp, int irq)
     return icp->ics->qirqs[irq - icp->ics->offset];
 }
 
+static void ics_set_irq_type(ICSState *ics, int irq, bool lsi)
+{
+    ics->irqs[irq - ics->offset].flags |=
+        lsi ? XICS_FLAGS_LSI : XICS_FLAGS_MSI;
+}
+
 void xics_set_irq_type(XICSState *icp, int irq, bool lsi)
 {
     assert(ics_valid_irq(icp->ics, irq));
 
-    icp->ics->islsi[irq - icp->ics->offset] = lsi;
+    ics_set_irq_type(icp->ics, irq, lsi);
 }
 
 /*
