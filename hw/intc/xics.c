@@ -635,14 +635,30 @@ static const TypeInfo ics_info = {
 /*
  * Exported functions
  */
+static int xics_find_server(XICSState *icp, int irq)
+{
+    int server;
+
+    for (server = 0; server < icp->nr_servers; ++server) {
+        ICSState *ics = &icp->ics[server];
+        if (ics_valid_irq(ics, irq)) {
+            return server;
+        }
+    }
+
+    return -1;
+}
 
 qemu_irq xics_get_qirq(XICSState *icp, int irq)
 {
-    if (!ics_valid_irq(icp->ics, irq)) {
-        return NULL;
+    int server = xics_find_server(icp, irq);
+
+    if (server >= 0) {
+        ICSState *ics = &icp->ics[server];
+        return ics->qirqs[irq - ics->offset];
     }
 
-    return icp->ics->qirqs[irq - icp->ics->offset];
+    return NULL;
 }
 
 static void ics_set_irq_type(ICSState *ics, int irq, bool lsi)
@@ -653,9 +669,10 @@ static void ics_set_irq_type(ICSState *ics, int irq, bool lsi)
 
 void xics_set_irq_type(XICSState *icp, int irq, bool lsi)
 {
-    assert(ics_valid_irq(icp->ics, irq));
+    int server = xics_find_server(icp, irq);
 
-    ics_set_irq_type(icp->ics, irq, lsi);
+    assert(server >= 0);
+    ics_set_irq_type(&icp->ics[server], irq, lsi);
 }
 
 /*
