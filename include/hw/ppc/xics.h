@@ -159,6 +159,7 @@ qemu_irq xics_get_qirq(XICSState *icp, int irq);
 void xics_set_irq_type(XICSState *icp, int irq, bool lsi);
 int xics_alloc(XICSState *icp, int server, int irq, bool lsi);
 int xics_alloc_block(XICSState *icp, int server, int num, bool lsi, bool align);
+void xics_free(XICSState *icp, int server, int irq, int num);
 
 void xics_cpu_setup(XICSState *icp, PowerPCCPU *cpu);
 

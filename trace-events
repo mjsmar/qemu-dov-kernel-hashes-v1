@@ -1191,6 +1191,7 @@ xics_ics_eoi(int nr) "ics_eoi: irq %#x"
 xics_alloc(int server, int irq) "server#%d, irq %d"
 xics_alloc_failed(int server, int irq) "server#%d, irq %d"
 xics_alloc_block(int server, int first, int num, bool lsi, int align) "server#%d, first irq %d, %d irqs, lsi=%d, alignnum %d"
+xics_ics_free(int server, int irq, int num) "server#%d, first irq %d, %d irqs"
 
 # hw/ppc/spapr.c
 spapr_cas_failed(unsigned long n) "DT diff buffer is too small: %ld bytes"

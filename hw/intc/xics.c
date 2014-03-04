@@ -44,6 +44,8 @@ static int get_cpu_index_by_dt_id(int cpu_dt_id)
     return -1;
 }
 
+static void ics_free(ICSState *ics, int irq, int num);
+
 void xics_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
 {
     CPUState *cs = CPU(cpu);
@@ -531,6 +533,12 @@ static void ics_reset(DeviceState *dev)
     }
 }
 
+static int ics_pre_load(ICSState *ics)
+{
+    ics_free(ics, ics->offset, ics->nr_irqs);
+    return 0;
+}
+
 static int ics_post_load(ICSState *ics, int version_id)
 {
     int i;
@@ -635,6 +643,7 @@ static void ics_class_init(ObjectClass *klass, void *data)
     dc->realize = ics_realize;
     dc->vmsd = &vmstate_ics;
     dc->reset = ics_reset;
+    isc->pre_load = ics_pre_load;
     isc->post_load = ics_post_load;
 }
 
@@ -767,6 +776,16 @@ int xics_alloc_block(XICSState *icp, int server, int num, bool lsi, bool align)
     trace_xics_alloc_block(server, first, num, lsi, align);
 
     return first;
+}
+
+static void ics_free(ICSState *ics, int irq, int num)
+{
+    int i;
+
+    trace_xics_ics_free(ics - ics->icp->ics, irq, num);
+    for (i = irq; i < irq + num; ++i) {
+        memset(&ics->irqs[i], 0, sizeof(ICSIRQState));
+    }
 }
 
 /*
