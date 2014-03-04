@@ -27,7 +27,7 @@
 #include "hw/pci/pci_host.h"
 #include "hw/ppc/xics.h"
 
-#define SPAPR_MSIX_MAX_DEVS 32
+#define SPAPR_MSIX_MAX_DEVS 256
 
 #define TYPE_SPAPR_PCI_HOST_BRIDGE "spapr-pci-host-bridge"
 
