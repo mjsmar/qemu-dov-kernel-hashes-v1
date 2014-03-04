@@ -550,6 +550,18 @@ static void ics_dispatch_pre_save(void *opaque)
     }
 }
 
+static int ics_dispatch_pre_load(void *opaque)
+{
+    ICSState *ics = opaque;
+    ICSStateClass *info = ICS_GET_CLASS(ics);
+
+    if (info->pre_load) {
+        return info->pre_load(ics);
+    }
+
+    return 0;
+}
+
 static int ics_dispatch_post_load(void *opaque, int version_id)
 {
     ICSState *ics = opaque;
@@ -582,6 +594,7 @@ static const VMStateDescription vmstate_ics = {
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .pre_save = ics_dispatch_pre_save,
+    .pre_load = ics_dispatch_pre_load,
     .post_load = ics_dispatch_post_load,
     .fields      = (VMStateField []) {
         /* Sanity check */
