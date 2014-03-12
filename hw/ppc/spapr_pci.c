@@ -1186,24 +1186,23 @@ static void spapr_device_hotplug_remove(DeviceState *qdev, PCIDevice *dev)
     }
 }
 
-static int spapr_device_hotplug(DeviceState *qdev, PCIDevice *dev,
-                                PCIHotplugState state)
+void spapr_phb_hot_plug(HotplugHandler *plug_handler,
+                        DeviceState *plugged_dev, Error **errp)
 {
-    int slot = PCI_SLOT(dev->devfn);
+    int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
-    if (state == PCI_COLDPLUG_ENABLED) {
-        return 0;
-    }
+    spapr_device_hotplug_add(DEVICE(plug_handler),
+                             PCI_DEVICE(plugged_dev), false);
+    spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+}
 
-    if (state == PCI_HOTPLUG_ENABLED) {
-        spapr_device_hotplug_add(qdev, dev);
-        spapr_pci_hotplug_add_event(qdev, slot);
-    } else {
-        spapr_device_hotplug_remove(qdev, dev);
-        spapr_pci_hotplug_remove_event(qdev, slot);
-    }
+void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
+                          DeviceState *plugged_dev, Error **errp)
+{
+    int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
-    return 0;
+    spapr_device_hotplug_remove(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
+    spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
@@ -1292,7 +1291,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
                            &sphb->memspace, &sphb->iospace,
                            PCI_DEVFN(0, 0), PCI_NUM_PINS, TYPE_PCI_BUS);
     phb->bus = bus;
-    pci_bus_hotplug(phb->bus, spapr_device_hotplug, DEVICE(sphb));
+    qbus_set_hotplug_handler(BUS(phb->bus), DEVICE(sphb), NULL);
 
     /*
      * Initialize PHB address space.
@@ -1452,6 +1451,7 @@ static void spapr_phb_class_init(ObjectClass *klass, void *data)
     PCIHostBridgeClass *hc = PCI_HOST_BRIDGE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     sPAPRPHBClass *spc = SPAPR_PCI_HOST_BRIDGE_CLASS(klass);
+    HotplugHandlerClass *hp = HOTPLUG_HANDLER_CLASS(klass);
 
     hc->root_bus_path = spapr_phb_root_bus_path;
     dc->realize = spapr_phb_realize;
@@ -1461,6 +1461,8 @@ static void spapr_phb_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     dc->cannot_instantiate_with_device_add_yet = false;
     spc->finish_realize = spapr_phb_finish_realize;
+    hp->plug = spapr_phb_hot_plug;
+    hp->unplug = spapr_phb_hot_unplug;
 }
 
 static const TypeInfo spapr_phb_info = {
@@ -1469,6 +1471,10 @@ static const TypeInfo spapr_phb_info = {
     .instance_size = sizeof(sPAPRPHBState),
     .class_init    = spapr_phb_class_init,
     .class_size    = sizeof(sPAPRPHBClass),
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_HOTPLUG_HANDLER },
+        { }
+    }
 };
 
 PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
