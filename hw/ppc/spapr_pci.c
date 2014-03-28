@@ -1641,6 +1641,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     int bus_off, i, j;
     char nodename[256];
     uint32_t bus_range[] = { cpu_to_be32(0), cpu_to_be32(0xff) };
+    uint16_t nmsi = 64;
     struct {
         uint32_t hi;
         uint64_t child;
@@ -1681,6 +1682,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     _FDT(fdt_setprop(fdt, bus_off, "ranges", &ranges, sizeof(ranges)));
     _FDT(fdt_setprop(fdt, bus_off, "reg", &bus_reg, sizeof(bus_reg)));
     _FDT(fdt_setprop_cell(fdt, bus_off, "ibm,pci-config-space-type", 0x1));
+    _FDT(fdt_setprop(fdt, bus_off, "ibm,pe-total-#msi", &nmsi, sizeof(nmsi)));
 
     /* Build the interrupt-map, this must matches what is done
      * in pci_spapr_map_irq
