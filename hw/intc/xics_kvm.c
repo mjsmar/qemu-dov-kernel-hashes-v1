@@ -253,7 +253,7 @@ static void ics_kvm_set_irq(void *opaque, int srcno, int val)
     int rc;
 
     args.irq = srcno + ics->offset;
-    if (ics->irqs[srcno].flags & XICS_FLAGS_LSI) {
+    if (ics->irqs[srcno].flags & XICS_FLAGS_MSI) {
         if (!val) {
             return;
         }
