@@ -691,14 +691,6 @@ static void ics_set_irq_type(ICSState *ics, int irq, bool lsi)
         lsi ? XICS_FLAGS_LSI : XICS_FLAGS_MSI;
 }
 
-void xics_set_irq_type(XICSState *icp, int irq, bool lsi)
-{
-    int server = xics_find_server(icp, irq);
-
-    assert(server >= 0);
-    ics_set_irq_type(&icp->ics[server], irq, lsi);
-}
-
 #define XICS_IRQ_FREE(ics, n)   \
     !(ics->irqs[(n) - ics->offset].flags & (XICS_FLAGS_LSI | XICS_FLAGS_MSI))
 
