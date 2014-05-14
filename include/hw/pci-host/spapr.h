@@ -27,8 +27,6 @@
 #include "hw/pci/pci_host.h"
 #include "hw/ppc/xics.h"
 
-#define SPAPR_MSIX_MAX_DEVS 256
-
 #define TYPE_SPAPR_PCI_HOST_BRIDGE "spapr-pci-host-bridge"
 
 #define SPAPR_PCI_HOST_BRIDGE(obj) \
@@ -67,11 +65,10 @@ struct sPAPRPHBState {
         uint32_t irq;
     } lsi_table[PCI_NUM_PINS];
 
-    struct spapr_pci_msi {
-        uint32_t config_addr;
-        uint32_t irq;
-        uint32_t nvec;
-    } msi_table[SPAPR_MSIX_MAX_DEVS];
+#define PCI_BUS_MAX             0xFF
+#define SPAPR_PCI_BUS_SHIFT     5
+    uint8_t msi[PCI_BUS_MAX * PCI_SLOT_MAX];
+    uint8_t msix[PCI_BUS_MAX * PCI_SLOT_MAX];
 
     QLIST_ENTRY(sPAPRPHBState) list;
 };

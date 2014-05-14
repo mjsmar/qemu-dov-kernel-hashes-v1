@@ -271,36 +271,12 @@ static void rtas_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 }
 
 /*
- * Find an entry with config_addr or returns the empty one if not found AND
- * alloc_new is set.
- * At the moment the msi_table entries are never released so there is
- * no point to look till the end of the list if we need to find the free entry.
- */
-static int spapr_msicfg_find(sPAPRPHBState *phb, uint32_t config_addr,
-                             bool alloc_new)
-{
-    int i;
-
-    for (i = 0; i < SPAPR_MSIX_MAX_DEVS; ++i) {
-        if (!phb->msi_table[i].nvec) {
-            break;
-        }
-        if (phb->msi_table[i].config_addr == config_addr) {
-            return i;
-        }
-    }
-    if ((i < SPAPR_MSIX_MAX_DEVS) && alloc_new) {
-        trace_spapr_pci_msi("Allocating new MSI config", i, config_addr);
-        return i;
-    }
-
-    return -1;
-}
-
-/*
  * Set MSI/MSIX message data.
  * This is required for msi_notify()/msix_notify() which
  * will write at the addresses via spapr_msi_write().
+ *
+ * If hwaddr == 0, all entries will have .data == first_irq i.e.
+ * table will be reset.
  */
 static void spapr_msi_setmsg(PCIDevice *pdev, hwaddr addr, bool msix,
                              unsigned first_irq, unsigned req_num)
@@ -314,10 +290,49 @@ static void spapr_msi_setmsg(PCIDevice *pdev, hwaddr addr, bool msix,
         return;
     }
 
-    for (i = 0; i < req_num; ++i, ++msg.data) {
+    for (i = 0; i < req_num; ++i) {
         msix_set_message(pdev, i, msg);
         trace_spapr_pci_msi_setup(pdev->name, i, msg.address);
+        if (addr) {
+            ++msg.data;
+        }
     }
+}
+
+static unsigned spapr_msi_get(sPAPRPHBState *phb, PCIDevice *pdev,
+                              unsigned *num, bool *msix)
+{
+    MSIMessage msg;
+    unsigned irq = 0;
+    uint8_t offs = (pci_bus_num(pdev->bus) << SPAPR_PCI_BUS_SHIFT) |
+        PCI_SLOT(pdev->devfn);
+
+    if ((phb->msi[offs] & (1 << PCI_FUNC(pdev->devfn))) &&
+        (phb->msix[offs] & (1 << PCI_FUNC(pdev->devfn)))) {
+        error_report("Both MSI and MSIX configured! MSIX will be used.");
+    }
+
+    if (phb->msix[offs] & (1 << PCI_FUNC(pdev->devfn))) {
+        *num = pdev->msix_entries_nr;
+        if (*num) {
+            msg = msix_get_message(pdev, 0);
+            irq = msg.data;
+            if (msix) {
+                *msix = true;
+            }
+        }
+    } else if (phb->msi[offs] & (1 << PCI_FUNC(pdev->devfn))) {
+        *num = msi_nr_vectors_allocated(pdev);
+        if (*num) {
+            msg = msi_get_message(pdev, 0);
+            irq = msg.data;
+            if (msix) {
+                *msix = false;
+            }
+        }
+    }
+
+    return irq;
 }
 
 static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
@@ -331,9 +346,10 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     unsigned int req_num = rtas_ld(args, 4); /* 0 == remove all */
     unsigned int seq_num = rtas_ld(args, 5);
     unsigned int ret_intr_type;
-    int ndev, irq, max_irqs = 0;
+    unsigned int irq, max_irqs = 0, num = 0, offs;
     sPAPRPHBState *phb = NULL;
     PCIDevice *pdev = NULL;
+    bool msix = false;
 
     switch (func) {
     case RTAS_CHANGE_MSI_FN:
@@ -358,31 +374,35 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
         rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
         return;
     }
+    offs = (pci_bus_num(pdev->bus) << SPAPR_PCI_BUS_SHIFT) |
+        PCI_SLOT(pdev->devfn);
 
     /* Releasing MSIs */
     if (!req_num) {
-        ndev = spapr_msicfg_find(phb, config_addr, false);
-        if (ndev < 0) {
-            trace_spapr_pci_msi("MSI has not been enabled", -1, config_addr);
+        irq = spapr_msi_get(phb, pdev, &num, &msix);
+        if (!num || !irq ||
+            ((func == RTAS_CHANGE_MSI_FN) && msix) ||
+            ((func == RTAS_CHANGE_MSIX_FN) && !msix)) {
+            trace_spapr_pci_msi("Releasing wrong config", config_addr);
             rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
             return;
         }
-        trace_spapr_pci_msi("Released MSIs", ndev, config_addr);
+
+        xics_free(spapr->icp, 0, irq, num);
+        spapr_msi_setmsg(pdev, 0, msix, 0, num);
+
+        if (msix) {
+            phb->msix[offs] &= ~(1 << PCI_FUNC(pdev->devfn));
+        } else {
+            phb->msi[offs] &= ~(1 << PCI_FUNC(pdev->devfn));
+        }
+        trace_spapr_pci_msi("Released MSIs", config_addr);
         rtas_st(rets, 0, RTAS_OUT_SUCCESS);
         rtas_st(rets, 1, 0);
         return;
     }
 
     /* Enabling MSI */
-
-    /* Find a device number in the map to add or reuse the existing one */
-    ndev = spapr_msicfg_find(phb, config_addr, true);
-    if (ndev >= SPAPR_MSIX_MAX_DEVS || ndev < 0) {
-        error_report("No free entry for a new MSI device");
-        rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
-        return;
-    }
-    trace_spapr_pci_msi("Configuring MSI", ndev, config_addr);
 
     /* Check if the device supports as many IRQs as requested */
     if (ret_intr_type == RTAS_TYPE_MSI) {
@@ -391,48 +411,44 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
         max_irqs = pdev->msix_entries_nr;
     }
     if (!max_irqs) {
-        error_report("Requested interrupt type %d is not enabled for device#%d",
-                     ret_intr_type, ndev);
+        error_report("Requested interrupt type %d is not enabled for device %x",
+                     ret_intr_type, config_addr);
         rtas_st(rets, 0, -1); /* Hardware error */
         return;
     }
     /* Correct the number if the guest asked for too many */
     if (req_num > max_irqs) {
+        trace_spapr_pci_msi_retry(config_addr, req_num, max_irqs);
         req_num = max_irqs;
+        irq = 0; /* to avoid misleading trace */
+        goto out;
     }
 
-    /* Check if there is an old config and MSI number has not changed */
-    if (phb->msi_table[ndev].nvec && (req_num != phb->msi_table[ndev].nvec)) {
-        /* Unexpected behaviour */
-        error_report("Cannot reuse MSI config for device#%d", ndev);
+    /* Allocate MSIs */
+    irq = xics_alloc_block(spapr->icp, 0, req_num, false,
+                           ret_intr_type == RTAS_TYPE_MSI);
+    if (!irq) {
+        error_report("Cannot allocate MSIs for device %x", config_addr);
         rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
         return;
     }
 
-    /* There is no cached config, allocate MSIs */
-    if (!phb->msi_table[ndev].nvec) {
-        irq = xics_alloc_block(spapr->icp, 0, req_num, false,
-                               ret_intr_type == RTAS_TYPE_MSI);
-        if (irq < 0) {
-            error_report("Cannot allocate MSIs for device#%d", ndev);
-            rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
-            return;
-        }
-        phb->msi_table[ndev].irq = irq;
-        phb->msi_table[ndev].nvec = req_num;
-        phb->msi_table[ndev].config_addr = config_addr;
-    }
-
     /* Setup MSI/MSIX vectors in the device (via cfgspace or MSIX BAR) */
     spapr_msi_setmsg(pdev, spapr->msi_win_addr, ret_intr_type == RTAS_TYPE_MSIX,
-                     phb->msi_table[ndev].irq, req_num);
+                     irq, req_num);
+    if (ret_intr_type == RTAS_TYPE_MSIX) {
+        phb->msix[offs] |= 1 << PCI_FUNC(pdev->devfn);
+    } else {
+        phb->msi[offs] |= 1 << PCI_FUNC(pdev->devfn);
+    }
 
+out:
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
     rtas_st(rets, 1, req_num);
     rtas_st(rets, 2, ++seq_num);
     rtas_st(rets, 3, ret_intr_type);
 
-    trace_spapr_pci_rtas_ibm_change_msi(func, req_num);
+    trace_spapr_pci_rtas_ibm_change_msi(config_addr, func, req_num, irq);
 }
 
 static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
@@ -446,25 +462,28 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
     uint32_t config_addr = rtas_ld(args, 0);
     uint64_t buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     unsigned int intr_src_num = -1, ioa_intr_num = rtas_ld(args, 3);
-    int ndev;
+    unsigned irq, num = 0;
     sPAPRPHBState *phb = NULL;
+    PCIDevice *pdev = NULL;
 
     /* Fins sPAPRPHBState */
     phb = find_phb(spapr, buid);
-    if (!phb) {
+    if (phb) {
+        pdev = find_dev(spapr, buid, config_addr);
+    }
+    if (!phb || !pdev) {
         rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
         return;
     }
 
     /* Find device descriptor and start IRQ */
-    ndev = spapr_msicfg_find(phb, config_addr, false);
-    if (ndev < 0) {
-        trace_spapr_pci_msi("MSI has not been enabled", -1, config_addr);
+    irq = spapr_msi_get(phb, pdev, &num, NULL);
+    if (!irq || !num || (ioa_intr_num >= num)) {
+        trace_spapr_pci_msi("Failed to return vector", config_addr);
         rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
         return;
     }
-
-    intr_src_num = phb->msi_table[ndev].irq + ioa_intr_num;
+    intr_src_num = irq + ioa_intr_num;
     trace_spapr_pci_rtas_ibm_query_interrupt_source_number(ioa_intr_num,
                                                            intr_src_num);
 
@@ -1417,20 +1436,6 @@ static const VMStateDescription vmstate_spapr_pci_lsi = {
     },
 };
 
-static const VMStateDescription vmstate_spapr_pci_msi = {
-    .name = "spapr_pci/lsi",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField []) {
-        VMSTATE_UINT32(config_addr, struct spapr_pci_msi),
-        VMSTATE_UINT32(irq, struct spapr_pci_msi),
-        VMSTATE_UINT32(nvec, struct spapr_pci_msi),
-
-        VMSTATE_END_OF_LIST()
-    },
-};
-
 static const VMStateDescription vmstate_spapr_pci = {
     .name = "spapr_pci",
     .version_id = 1,
@@ -1445,8 +1450,8 @@ static const VMStateDescription vmstate_spapr_pci = {
         VMSTATE_UINT64_EQUAL(io_win_size, sPAPRPHBState),
         VMSTATE_STRUCT_ARRAY(lsi_table, sPAPRPHBState, PCI_NUM_PINS, 0,
                              vmstate_spapr_pci_lsi, struct spapr_pci_lsi),
-        VMSTATE_STRUCT_ARRAY(msi_table, sPAPRPHBState, SPAPR_MSIX_MAX_DEVS, 0,
-                             vmstate_spapr_pci_msi, struct spapr_pci_msi),
+        VMSTATE_UINT8_ARRAY(msi, sPAPRPHBState, PCI_BUS_MAX * PCI_SLOT_MAX),
+        VMSTATE_UINT8_ARRAY(msix, sPAPRPHBState, PCI_BUS_MAX * PCI_SLOT_MAX),
 
         VMSTATE_END_OF_LIST()
     },
