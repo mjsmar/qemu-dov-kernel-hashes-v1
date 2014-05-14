@@ -1186,18 +1186,17 @@ static void spapr_device_hotplug_remove(DeviceState *qdev, PCIDevice *dev)
     }
 }
 
-void spapr_phb_hot_plug(HotplugHandler *plug_handler,
-                        DeviceState *plugged_dev, Error **errp)
+static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
+                               DeviceState *plugged_dev, Error **errp)
 {
     int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
-    spapr_device_hotplug_add(DEVICE(plug_handler),
-                             PCI_DEVICE(plugged_dev), false);
+    spapr_device_hotplug_add(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
     spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
 }
 
-void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
-                          DeviceState *plugged_dev, Error **errp)
+static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
+                                 DeviceState *plugged_dev, Error **errp)
 {
     int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
