@@ -150,15 +150,17 @@ struct ICSIRQState {
 #define XICS_STATUS_REJECTED           0x4
 #define XICS_STATUS_MASKED_PENDING     0x8
     uint8_t status;
-#define XICS_FLAGS_LSI                 0x1
-#define XICS_FLAGS_MSI                 0x2
+/* @flags == 0 measn the interrupt is not allocated */
+#define XICS_FLAGS_IRQ_LSI             0x1
+#define XICS_FLAGS_IRQ_MSI             0x2
+#define XICS_FLAGS_IRQ_MASK            0x3
     uint8_t flags;
 };
 
 qemu_irq xics_get_qirq(XICSState *icp, int irq);
-int xics_alloc(XICSState *icp, int server, int irq, bool lsi);
-int xics_alloc_block(XICSState *icp, int server, int num, bool lsi, bool align);
-void xics_free(XICSState *icp, int server, int irq, int num);
+int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi);
+int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align);
+void xics_free(XICSState *icp, int src, int irq, int num);
 
 void xics_cpu_setup(XICSState *icp, PowerPCCPU *cpu);
 

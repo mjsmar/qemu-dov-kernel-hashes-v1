@@ -375,6 +375,14 @@ target_ulong spapr_hypercall(PowerPCCPU *cpu, target_ulong opcode,
 int spapr_allocate_irq(int hint, bool lsi);
 int spapr_allocate_irq_block(int num, bool lsi, bool msi);
 
+/* RTAS return codes */
+#define RTAS_OUT_SUCCESS            0
+#define RTAS_OUT_NO_ERRORS_FOUND    1
+#define RTAS_OUT_HW_ERROR           -1
+#define RTAS_OUT_BUSY               -2
+#define RTAS_OUT_PARAM_ERROR        -3
+#define RTAS_OUT_NOT_SUPPORTED      -3
+#define RTAS_OUT_NOT_AUTHORIZED     -9002
 
 /* RTAS return codes */
 #define RTAS_OUT_SUCCESS            0

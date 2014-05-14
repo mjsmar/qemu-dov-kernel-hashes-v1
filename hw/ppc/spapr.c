@@ -1041,6 +1041,8 @@ static const VMStateDescription vmstate_spapr = {
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields      = (VMStateField []) {
+        VMSTATE_UNUSED(4), /* used to be @next_irq */
+
         /* RTC offset */
         VMSTATE_UINT64(rtc_offset, sPAPREnvironment),
         VMSTATE_PPC_TIMEBASE_V(tb, sPAPREnvironment, 2),
