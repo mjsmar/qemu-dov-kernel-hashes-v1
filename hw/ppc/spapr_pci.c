@@ -1104,21 +1104,17 @@ static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
     drc_entry_slot->state &= ~(uint32_t)INDICATOR_ENTITY_SENSE_MASK;
     drc_entry_slot->state |= encoded; /* and the slot */
 
-    /* FIXME: guest tools should set populated slots to
-     * UNISOLATED/populated, we should only need to do this
-     * during cold plug / machine init. For now just do it
-     * unconditionally
-     */
-
     /* reliable unplug requires we wait for a transition from
      * UNISOLATED->ISOLATED prior to device removal/deletion.
      * However, slots populated by devices at boot-time will not
      * have ever been set by guest tools to an UNISOLATED/populated
      * state, so set this manually in the case of coldplug devices
      */
-    drc_entry_slot->state |= ENCODE_DRC_STATE(1,
-                                              INDICATOR_ISOLATION_MASK,
-                                              INDICATOR_ISOLATION_SHIFT);
+    if (!DEVICE(dev)->hotplugged) {
+        drc_entry_slot->state |= ENCODE_DRC_STATE(1,
+                                                  INDICATOR_ISOLATION_MASK,
+                                                  INDICATOR_ISOLATION_SHIFT);
+    }
 
     /* need to allocate memory region for device BARs */
     spapr_map_bars(phb, dev);
@@ -1208,10 +1204,9 @@ static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
     int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
     spapr_device_hotplug_add(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
-    /* FIXME: we should suppress the hotplug event if this was called
-     * during machine init
-     */
-    spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+    if (plugged_dev->hotplugged) {
+        spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+    }
 }
 
 static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
@@ -1220,10 +1215,9 @@ static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
     int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
     spapr_device_hotplug_remove(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
-    /* FIXME: we should suppress the hotplug event if this was called
-     * during machine init
-     */
-    spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
+    if (plugged_dev->hotplugged) {
+        spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
+    }
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
