@@ -884,6 +884,105 @@ static void fill_resource_props(PCIDevice *d, int bus_num,
     *assigned_size = idx * RESOURCE_CELLS_TOTAL * sizeof(uint32_t);
 }
 
+static hwaddr spapr_find_bar_addr(sPAPRPHBState *phb, PCIIORegion *r)
+{
+    MemoryRegionSection mrs = { 0 };
+    hwaddr search_addr;
+    hwaddr size = r->size;
+    hwaddr addr_mask = ~(size - 1);
+    hwaddr increment = size;
+    hwaddr limit;
+
+    if (!(r->type & PCI_BASE_ADDRESS_SPACE_IO)) {
+        /* beginning portion of mmio address space for bus does not get
+         * mapped into system memory, so calculate addr starting at the
+         * corresponding offset into mmio as.
+         */
+        search_addr = (SPAPR_PCI_MEM_WIN_BUS_OFFSET + increment) & addr_mask;
+    } else {
+        search_addr = increment;
+    }
+    limit = memory_region_size(r->address_space);
+
+    do {
+        mrs = memory_region_find_subregion(r->address_space, search_addr, size);
+        if (mrs.mr) {
+            hwaddr mr_last_addr;
+            mr_last_addr = mrs.mr->addr + memory_region_size(mrs.mr) - 1;
+            search_addr = (mr_last_addr + 1) & addr_mask;
+            if (search_addr <= mr_last_addr) {
+                search_addr += increment;
+            }
+            /* this memory region overlaps, unref and continue searching */
+            memory_region_unref(mrs.mr);
+        }
+    } while (int128_nz(mrs.size) && search_addr + size <= limit);
+
+    if (search_addr + size >= limit) {
+        return PCI_BAR_UNMAPPED;
+    }
+
+    return search_addr;
+}
+
+static int spapr_map_bars(sPAPRPHBState *phb, PCIDevice *dev)
+{
+    PCIIORegion *r;
+    int i, ret = -1;
+
+    for (i = 0; i < PCI_NUM_REGIONS; i++) {
+        uint32_t bar_address = pci_bar(dev, i);
+        uint32_t bar_value;
+        uint16_t cmd_value = pci_default_read_config(dev, PCI_COMMAND, 2);
+        hwaddr addr;
+
+        r = &dev->io_regions[i];
+
+        /* this region isn't registered */
+        if (!r->size) {
+            continue;
+        }
+
+        /* find a hw addr we can map */
+        addr = spapr_find_bar_addr(phb, r);
+        if (addr == PCI_BAR_UNMAPPED) {
+            /* we can't find a free range within address space for this BAR */
+            fprintf(stderr,
+                    "Unable to map BAR %d, no free range available\n", i);
+            return -1;
+        }
+        /* we can probably map this region into memory if there is not
+         * a race condition with some other allocator. write the address
+         * to the device BAR which will force a call to pci_update_mappings
+         */
+        if (r->type & PCI_BASE_ADDRESS_SPACE_IO) {
+            pci_default_write_config(dev, PCI_COMMAND,
+                                     cmd_value | PCI_COMMAND_IO, 2);
+        } else {
+            pci_default_write_config(dev, PCI_COMMAND,
+                                     cmd_value | PCI_COMMAND_MEMORY, 2);
+        }
+
+        bar_value = addr;
+
+        if (i == PCI_ROM_SLOT) {
+            bar_value |= PCI_ROM_ADDRESS_ENABLE;
+        }
+        /* write the new bar value */
+        pci_default_write_config(dev, bar_address, bar_value, 4);
+
+        /* if this is a 64-bit BAR, we need to also write the
+         * upper 32 bit value.
+         */
+        if (r->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            bar_value = (addr >> 32) & 0xffffffffUL;
+            pci_default_write_config(dev, bar_address + 4, bar_value, 4);
+        }
+        ret = 0;
+    }
+    return ret;
+}
+
 static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
                                        int phb_index)
 {
@@ -995,6 +1094,9 @@ static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
         drc_entry_slot->state |= ENCODE_DRC_STATE(1,
                                                   INDICATOR_ISOLATION_MASK,
                                                   INDICATOR_ISOLATION_SHIFT);
+    } else {
+        /* need to allocate memory region for device BARs */
+        spapr_map_bars(phb, dev);
     }
 
     /* add OF node for pci device and required OF DT properties */
