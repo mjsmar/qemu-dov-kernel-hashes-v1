@@ -235,6 +235,20 @@ static void machine_set_firmware(Object *obj, const char *value, Error **errp)
     ms->firmware = g_strdup(value);
 }
 
+static bool machine_get_managed_hotplug(Object *obj, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    return ms->managed_hotplug;
+}
+
+static void machine_set_managed_hotplug(Object *obj, bool value, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    ms->managed_hotplug = value;
+}
+
 static void machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "accel",
@@ -274,6 +288,9 @@ static void machine_initfn(Object *obj)
     object_property_add_bool(obj, "usb", machine_get_usb, machine_set_usb, NULL);
     object_property_add_str(obj, "firmware",
                             machine_get_firmware, machine_set_firmware, NULL);
+    object_property_add_bool(obj, "managed-hotplug",
+                             machine_get_managed_hotplug,
+                             machine_set_managed_hotplug, NULL);
 }
 
 static void machine_finalize(Object *obj)

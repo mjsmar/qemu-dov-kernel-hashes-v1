@@ -1452,6 +1452,7 @@ static void ppc_spapr_init(MachineState *machine)
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
     const char *boot_device = machine->boot_order;
+    bool managed_hotplug = machine->managed_hotplug;
     PowerPCCPU *cpu;
     CPUPPCState *env;
     PCIHostState *phb;
@@ -1607,6 +1608,7 @@ static void ppc_spapr_init(MachineState *machine)
     spapr_create_nvram(spapr);
 
     /* Set up PCI */
+    spapr->managed_hotplug = managed_hotplug;
     spapr_pci_msi_init(spapr, SPAPR_PCI_MSI_WINDOW);
     spapr_pci_rtas_init();
 

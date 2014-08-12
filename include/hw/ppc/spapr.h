@@ -76,6 +76,9 @@ typedef struct sPAPREnvironment {
 
     /* Platform state - sensors and indicators */
     uint32_t state;
+
+    /* Emulate firmware-managed setup for hotplugged devices */
+    bool managed_hotplug;
 } sPAPREnvironment;
 
 #define H_SUCCESS         0
