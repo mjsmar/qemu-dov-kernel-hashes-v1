@@ -1089,14 +1089,18 @@ static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
      * However, slots populated by devices at boot-time will not
      * have ever been set by guest tools to an UNISOLATED/populated
      * state, so set this manually in the case of coldplug devices
+     *
+     * for hotplugged devices, we need to do the BAR-assignment
+     * work that firmware would normally do at boot-time when
+     * managed_hotplug is enabled
      */
     if (!DEVICE(dev)->hotplugged) {
         drc_entry_slot->state |= ENCODE_DRC_STATE(1,
                                                   INDICATOR_ISOLATION_MASK,
                                                   INDICATOR_ISOLATION_SHIFT);
-    } else {
-        /* need to allocate memory region for device BARs */
-        spapr_map_bars(phb, dev);
+    } else if (spapr->managed_hotplug) {
+            /* need to allocate memory regions for device BARs */
+            spapr_map_bars(phb, dev);
     }
 
     /* add OF node for pci device and required OF DT properties */
@@ -1185,7 +1189,11 @@ static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
 
     spapr_device_hotplug_add(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
     if (plugged_dev->hotplugged) {
-        spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+        if (spapr->managed_hotplug) {
+            spapr_pci_managed_hotplug_add_event(DEVICE(plug_handler), slot);
+        } else {
+            spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+        }
     }
 }
 
@@ -1195,7 +1203,11 @@ static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
     int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
 
     spapr_device_hotplug_remove(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
-    spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
+    if (spapr->managed_hotplug) {
+        spapr_pci_managed_hotplug_remove_event(DEVICE(plug_handler), slot);
+    } else {
+        spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
+    }
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
