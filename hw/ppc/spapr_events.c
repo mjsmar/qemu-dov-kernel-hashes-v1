@@ -178,6 +178,7 @@ struct rtas_event_log_v6_hp {
 #define RTAS_LOG_V6_HP_TYPE_SLOT                         3
 #define RTAS_LOG_V6_HP_TYPE_PHB                          4
 #define RTAS_LOG_V6_HP_TYPE_PCI                          5
+#define RTAS_LOG_V6_HP_TYPE_PCI_MANAGED                  6
     uint8_t hotplug_action;
 #define RTAS_LOG_V6_HP_ACTION_ADD                        1
 #define RTAS_LOG_V6_HP_ACTION_REMOVE                     2
@@ -379,6 +380,7 @@ static void spapr_hotplug_req_event(uint8_t hp_type, uint8_t hp_action,
 
     switch (hp_type) {
     case RTAS_LOG_V6_HP_TYPE_PCI:
+    case RTAS_LOG_V6_HP_TYPE_PCI_MANAGED:
         hp->drc.index = drc_entry->child_entries[slot].drc_index;
         hp->hotplug_identifier = RTAS_LOG_V6_HP_ID_DRC_INDEX;
         break;
@@ -400,6 +402,22 @@ void spapr_pci_hotplug_remove_event(DeviceState *qdev, int slot)
     sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
 
     return spapr_hotplug_req_event(RTAS_LOG_V6_HP_TYPE_PCI,
+                                   RTAS_LOG_V6_HP_ACTION_REMOVE, phb, slot);
+}
+
+void spapr_pci_managed_hotplug_add_event(DeviceState *qdev, int slot)
+{
+    sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
+
+    return spapr_hotplug_req_event(RTAS_LOG_V6_HP_TYPE_PCI_MANAGED,
+                                   RTAS_LOG_V6_HP_ACTION_ADD, phb, slot);
+}
+
+void spapr_pci_managed_hotplug_remove_event(DeviceState *qdev, int slot)
+{
+    sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
+
+    return spapr_hotplug_req_event(RTAS_LOG_V6_HP_TYPE_PCI_MANAGED,
                                    RTAS_LOG_V6_HP_ACTION_REMOVE, phb, slot);
 }
 

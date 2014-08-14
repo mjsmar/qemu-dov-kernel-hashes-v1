@@ -528,5 +528,7 @@ sPAPRDrcEntry *spapr_phb_to_drc_entry(uint64_t buid);
 sPAPRDrcEntry *spapr_find_drc_entry(int drc_index);
 void spapr_pci_hotplug_add_event(DeviceState *qdev, int slot);
 void spapr_pci_hotplug_remove_event(DeviceState *qdev, int slot);
+void spapr_pci_managed_hotplug_add_event(DeviceState *qdev, int slot);
+void spapr_pci_managed_hotplug_remove_event(DeviceState *qdev, int slot);
 
 #endif /* !defined (__HW_SPAPR_H__) */
