@@ -1,0 +1,200 @@
+/*
+ * QEMU SPAPR Dynamic Resource Connector Implementation
+ *
+ * Copyright IBM Corp. 2014
+ *
+ * Authors:
+ *  Michael Roth      <mdroth@linux.vnet.ibm.com>
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * See the COPYING file in the top-level directory.
+ */
+#if !defined(__HW_SPAPR_DRC_H__)
+#define __HW_SPAPR_DRC_H__
+
+#include "qom/object.h"
+#include "hw/qdev.h"
+#include "libfdt.h"
+
+#define TYPE_SPAPR_DR_CONNECTOR "spapr-dr-connector"
+#define SPAPR_DR_CONNECTOR_GET_CLASS(obj) \
+        OBJECT_GET_CLASS(sPAPRDRConnectorClass, obj, TYPE_SPAPR_DR_CONNECTOR)
+#define SPAPR_DR_CONNECTOR_CLASS(klass) \
+        OBJECT_CLASS_CHECK(sPAPRDRConnectorClass, klass, TYPE_SPAPR_DR_CONNECTOR)
+#define SPAPR_DR_CONNECTOR(obj) OBJECT_CHECK(sPAPRDRConnector, (obj), TYPE_SPAPR_DR_CONNECTOR)
+
+/*
+ * Various hotplug types managed by sPAPRDRConnector
+ *
+ * note: we have the option of making sPAPRDRConnector abstract and
+ * implementing subclasses to capture any differences in behavior, but
+ * since those differences are expected to be minimal we'll avoid that
+ * for now and rely on custom callback/handler registration where
+ * needed.
+ *
+ * TODO: do we even need this at all right now?
+ */
+
+/* these are somewhat arbitrary, but to make things easier
+ * when generating DRC indexes later we've aligned these values
+ * with those used in the corresponding bits of DRC indexes
+ * on bare-metal
+ */
+typedef enum {
+    SPAPR_DR_CONNECTOR_TYPE_CPU = 1,
+    SPAPR_DR_CONNECTOR_TYPE_PHB = 2,
+    SPAPR_DR_CONNECTOR_TYPE_VIO = 3,
+    SPAPR_DR_CONNECTOR_TYPE_PCI = 4,
+    SPAPR_DR_CONNECTOR_TYPE_LMB = 8,
+} sPAPRDRConnectorType;
+
+/*
+ * set via set-indicator RTAS calls
+ * as documented by PAPR+ 2.7 13.5.3.4, Table 177
+ *
+ * isolated: put device under firmware control 
+ * unisolated: claim OS control of device (may or may not be in use)
+ */
+typedef enum {
+    SPAPR_DR_ISOLATION_STATE_ISOLATED   = 0,
+    SPAPR_DR_ISOLATION_STATE_UNISOLATED = 1
+} sPAPRDRIsolationState;
+
+/*
+ * set via set-indicator RTAS calls
+ * as documented by PAPR+ 2.7 13.5.3.4, Table 177
+ *
+ * unusable: mark device as unavailable to OS
+ * usable: mark device as available to OS
+ * exchange: (currently unused)
+ * recover: (currently unused)
+ */
+typedef enum {
+    SPAPR_DR_ALLOCATION_STATE_UNUSABLE  = 0,
+    SPAPR_DR_ALLOCATION_STATE_USABLE    = 1,
+    SPAPR_DR_ALLOCATION_STATE_EXCHANGE  = 2,
+    SPAPR_DR_ALLOCATION_STATE_RECOVER   = 3
+} sPAPRDRAllocationState;
+
+/*
+ * LED/visual indicator state
+ *
+ * set via set-indicator RTAS calls
+ * as documented by PAPR+ 2.7 13.5.3.4, Table 177,
+ * and PAPR+ 2.7 13.5.4.1, Table 180
+ *
+ * inactive: hotpluggable entity inactive and safely removable
+ * active: hotpluggable entity in use and not safely removable
+ * identify: (currently unused)
+ * action: (currently unused)
+ */
+typedef enum {
+    SPAPR_DR_INDICATOR_STATE_INACTIVE   = 0,
+    SPAPR_DR_INDICATOR_STATE_ACTIVE     = 1,
+    SPAPR_DR_INDICATOR_STATE_IDENTIFY   = 2,
+    SPAPR_DR_INDICATOR_STATE_ACTION     = 3,
+} sPAPRDRIndicatorState;
+
+/*
+ * returned via get-sensor-state RTAS calls
+ * as documented by PAPR+ 2.7 13.5.3.3, Table 175:
+ *
+ * empty: connector slot empty (e.g. empty hotpluggable PCI slot)
+ * present: connector slot populated and device available to OS
+ * unusable: device not currently available to OS
+ * exchange: (currently unused)
+ * recover: (currently unused)
+ */
+typedef enum {
+    SPAPR_DR_ENTITY_SENSE_EMPTY     = 0,
+    SPAPR_DR_ENTITY_SENSE_PRESENT   = 1,
+    SPAPR_DR_ENTITY_SENSE_UNUSABLE  = 2,
+    SPAPR_DR_ENTITY_SENSE_EXCHANGE  = 3,
+    SPAPR_DR_ENTITY_SENSE_RECOVER   = 4,
+} sPAPRDREntitySense;
+
+typedef enum {
+    SPAPR_DR_CC_RESPONSE_NEXT_SIB       = 1, /* currently unused */
+    SPAPR_DR_CC_RESPONSE_NEXT_CHILD     = 2,
+    SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY  = 3,
+    SPAPR_DR_CC_RESPONSE_PREV_PARENT    = 4,
+    SPAPR_DR_CC_RESPONSE_SUCCESS        = 0,
+    SPAPR_DR_CC_RESPONSE_ERROR          = -1,
+    SPAPR_DR_CC_RESPONSE_CONTINUE       = -2,
+} sPAPRDRCCResponse;
+
+typedef struct sPAPRDRCCState {
+    void *fdt;
+    int fdt_start_offset;
+    int fdt_offset;
+    int fdt_depth;
+} sPAPRDRCCState;
+
+typedef void (spapr_drc_detach_cb)(DeviceState *d, void *opaque);
+
+typedef struct sPAPRDRConnector {
+    /*< private >*/
+    Object parent;
+
+    sPAPRDRConnectorType type;
+    uint32_t id;
+
+    /* sensor/indicator states */
+    uint32_t isolation_state;
+    uint32_t allocation_state;
+    uint32_t indicator_state;
+
+    /* configure-connector state */
+    sPAPRDRCCState ccs;
+
+    bool awaiting_release;
+
+    /* device pointer, via link property */
+    DeviceState *dev;
+    spapr_drc_detach_cb *detach_cb;
+    void *detach_cb_opaque;
+} sPAPRDRConnector;
+
+//typedef void (spapr_drc_dt_fn)(DeviceState *d, void *opaque);
+
+typedef struct sPAPRDRConnectorClass {
+    /*< private >*/
+    ObjectClass parent;
+
+    /*< public >*/
+
+    /* accessors for guest-visible (generally via RTAS) DR state */
+    int (*set_isolation_state)(sPAPRDRConnector *drc,
+                               sPAPRDRIsolationState state);
+    int (*set_indicator_state)(sPAPRDRConnector *drc,
+                               sPAPRDRIndicatorState state);
+    int (*set_allocation_state)(sPAPRDRConnector *drc,
+                                sPAPRDRAllocationState state);
+    uint32_t (*get_index)(sPAPRDRConnector *drc);
+
+    sPAPRDREntitySense (*entity_sense)(sPAPRDRConnector *drc);
+    sPAPRDRCCResponse (*configure_connector)(sPAPRDRConnector *drc,
+                                             char **prop_name,
+                                             const struct fdt_property **prop,
+                                             int *prop_len);
+
+    /* QEMU interfaces for managing hotplug operations */
+    /*
+    void (*attach)(sPAPRDRConnector *drc, DeviceState *d,
+                   spapr_drc_dt_fn *dt_fn,
+                   bool coldplug);
+                   */
+    void (*attach)(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
+                   int fdt_start_offset, bool coldplug);
+    void (*detach)(sPAPRDRConnector *drc, DeviceState *d,
+                   spapr_drc_detach_cb *detach_cb,
+                   void *detach_cb_opaque);
+} sPAPRDRConnectorClass;
+
+sPAPRDRConnector *spapr_dr_connector_new(sPAPRDRConnectorType type,
+                                         uint32_t token);
+sPAPRDRConnector *spapr_dr_connector_by_index(uint32_t index);
+sPAPRDRConnector *spapr_dr_connector_by_id(sPAPRDRConnectorType type,
+                                           uint32_t id);
+
+#endif /* __HW_SPAPR_DRC_H__ */

@@ -58,6 +58,7 @@
 #define RTAS_TYPE_MSIX          2
 
 /* For set-indicator RTAS interface */
+#if 0
 #define INDICATOR_ISOLATION_MASK            0x0001   /* 9001 one bit */
 #define INDICATOR_GLOBAL_INTERRUPT_MASK     0x0002   /* 9005 one bit */
 #define INDICATOR_ERROR_LOG_MASK            0x0004   /* 9006 one bit */
@@ -86,6 +87,7 @@
 
 #define ENCODE_DRC_STATE(val, m, s) \
     (((uint32_t)(val) << (s)) & (uint32_t)(m))
+#endif
 
 #define FDT_MAX_SIZE            0x10000
 #define _FDT(exp) \
@@ -96,7 +98,9 @@
         }                                                          \
     } while (0)
 
-static void spapr_drc_state_reset(sPAPRDrcEntry *drc_entry);
+#include "hw/ppc/spapr_drc.h"
+
+//static void spapr_drc_state_reset(sPAPRDrcEntry *drc_entry);
 
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
@@ -457,94 +461,70 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
     rtas_st(rets, 2, 1);/* 0 == level; 1 == edge */
 }
 
+/*
+ * indicator/sensor types
+ * as defined by PAPR+ 2.7 7.3.5.4, Table 41
+ *
+ * NOTE: currently only DR-related sensors are implemented here
+ */
+#define RTAS_SENSOR_TYPE_ISOLATION_STATE 9001
+#define RTAS_SENSOR_TYPE_DR 9002
+#define RTAS_SENSOR_TYPE_ALLOCATION_STATE 9003
+#define RTAS_SENSOR_TYPE_ENTITY_SENSE RTAS_SENSOR_TYPE_ALLOCATION_STATE
+
+static bool sensor_type_is_dr(uint32_t sensor_type)
+{
+    switch (sensor_type) {
+    case RTAS_SENSOR_TYPE_ISOLATION_STATE:
+    case RTAS_SENSOR_TYPE_DR:
+    case RTAS_SENSOR_TYPE_ALLOCATION_STATE:
+        return true;
+    }
+
+    return false;
+}
+
 static void rtas_set_indicator(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                uint32_t token, uint32_t nargs,
                                target_ulong args, uint32_t nret,
                                target_ulong rets)
 {
-    uint32_t indicator = rtas_ld(args, 0);
-    uint32_t drc_index = rtas_ld(args, 1);
-    uint32_t indicator_state = rtas_ld(args, 2);
-    uint32_t encoded = 0, shift = 0, mask = 0;
-    uint32_t *pind;
-    sPAPRDrcEntry *drc_entry = NULL;
+    uint32_t sensor_type = rtas_ld(args, 0);
+    uint32_t sensor_index = rtas_ld(args, 1);
+    uint32_t sensor_state = rtas_ld(args, 2);
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
 
-    if (drc_index == 0) { /* platform indicator */
-        pind = &spapr->state;
+    if (sensor_type_is_dr(sensor_type)) {
+        /* if this is a DR sensor we can assume sensor_index == drc_index */
+        drc = spapr_dr_connector_by_index(sensor_index);
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
     } else {
-        drc_entry = spapr_find_drc_entry(drc_index);
-        if (!drc_entry) {
-            DPRINTF("rtas_set_indicator: unable to find drc_entry for %x",
-                    drc_index);
-            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
-            return;
-        }
-        pind = &drc_entry->state;
+        /* currently only DR-related sensors are implemented */
+        goto out_unimplemented;
     }
 
-    switch (indicator) {
-    case 9:  /* EPOW */
-        shift = INDICATOR_EPOW_SHIFT;
-        mask = INDICATOR_EPOW_MASK;
+    switch (sensor_type) {
+    case RTAS_SENSOR_TYPE_ISOLATION_STATE:
+        drck->set_isolation_state(drc, sensor_state);
         break;
-    case 9001: /* Isolation state */
-        /* encode the new value into the correct bit field */
-        shift = INDICATOR_ISOLATION_SHIFT;
-        mask = INDICATOR_ISOLATION_MASK;
-        if (drc_entry) {
-            /* transition from unisolated to isolated for a hotplug slot
-             * entails completion of guest-side device unplug/cleanup, so
-             * we can now safely remove the device if qemu is waiting for
-             * it to be released
-             */
-            if (DECODE_DRC_STATE(*pind, mask, shift) != indicator_state) {
-                if (indicator_state == 0 && drc_entry->awaiting_release) {
-                    /* device_del has been called and host is waiting
-                     * for guest to release/isolate device, go ahead
-                     * and remove it now
-                     */
-                    spapr_drc_state_reset(drc_entry);
-                }
-            }
-        }
+    case RTAS_SENSOR_TYPE_DR:
+        drck->set_indicator_state(drc, sensor_state);
         break;
-    case 9002: /* DR */
-        shift = INDICATOR_DR_SHIFT;
-        mask = INDICATOR_DR_MASK;
-        break;
-    case 9003: /* Allocation State */
-        shift = INDICATOR_ALLOCATION_SHIFT;
-        mask = INDICATOR_ALLOCATION_MASK;
-        break;
-    case 9005: /* global interrupt */
-        shift = INDICATOR_GLOBAL_INTERRUPT_SHIFT;
-        mask = INDICATOR_GLOBAL_INTERRUPT_MASK;
-        break;
-    case 9006: /* error log */
-        shift = INDICATOR_ERROR_LOG_SHIFT;
-        mask = INDICATOR_ERROR_LOG_MASK;
-        break;
-    case 9007: /* identify */
-        shift = INDICATOR_IDENTIFY_SHIFT;
-        mask = INDICATOR_IDENTIFY_MASK;
-        break;
-    case 9009: /* reset */
-        shift = INDICATOR_RESET_SHIFT;
-        mask = INDICATOR_RESET_MASK;
+    case RTAS_SENSOR_TYPE_ALLOCATION_STATE:
+        drck->set_allocation_state(drc, sensor_state);
         break;
     default:
-        DPRINTF("rtas_set_indicator: indicator not implemented: %d",
-                indicator);
-        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
-        return;
+        goto out_unimplemented;
     }
 
-    encoded = ENCODE_DRC_STATE(indicator_state, mask, shift);
-    /* clear the current indicator value */
-    *pind &= ~mask;
-    /* set the new value */
-    *pind |= encoded;
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+    return;
+
+out_unimplemented:
+    DPRINTF("rtas_set_indicator: sensor/indicator not implemented: %d",
+            sensor_type);
+    rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
 }
 
 static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
@@ -573,76 +553,40 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
                                   target_ulong args, uint32_t nret,
                                   target_ulong rets)
 {
-    uint32_t sensor = rtas_ld(args, 0);
-    uint32_t drc_index = rtas_ld(args, 1);
-    uint32_t sensor_state = 0, decoded = 0;
-    uint32_t shift = 0, mask = 0;
-    sPAPRDrcEntry *drc_entry = NULL;
+    uint32_t sensor_type = rtas_ld(args, 0);
+    uint32_t sensor_index = rtas_ld(args, 1);
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    uint32_t entity_sense;
 
-    if (drc_index == 0) {  /* platform state sensor/indicator */
-        sensor_state = spapr->state;
-    } else { /* we should have a drc entry */
-        drc_entry = spapr_find_drc_entry(drc_index);
-        if (!drc_entry) {
-            DPRINTF("unable to find DRC entry for index %x", drc_index);
-            sensor_state = 0; /* empty */
-            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
-            return;
-        }
-        sensor_state = drc_entry->state;
-    }
-    switch (sensor) {
-    case 9:  /* EPOW */
-        shift = INDICATOR_EPOW_SHIFT;
-        mask = INDICATOR_EPOW_MASK;
-        break;
-    case 9001: /* Isolation state */
-        /* encode the new value into the correct bit field */
-        shift = INDICATOR_ISOLATION_SHIFT;
-        mask = INDICATOR_ISOLATION_MASK;
-        break;
-    case 9002: /* DR */
-        shift = INDICATOR_DR_SHIFT;
-        mask = INDICATOR_DR_MASK;
-        break;
-    case 9003: /* entity sense */
-        shift = INDICATOR_ENTITY_SENSE_SHIFT;
-        mask = INDICATOR_ENTITY_SENSE_MASK;
-        break;
-    case 9005: /* global interrupt */
-        shift = INDICATOR_GLOBAL_INTERRUPT_SHIFT;
-        mask = INDICATOR_GLOBAL_INTERRUPT_MASK;
-        break;
-    case 9006: /* error log */
-        shift = INDICATOR_ERROR_LOG_SHIFT;
-        mask = INDICATOR_ERROR_LOG_MASK;
-        break;
-    case 9007: /* identify */
-        shift = INDICATOR_IDENTIFY_SHIFT;
-        mask = INDICATOR_IDENTIFY_MASK;
-        break;
-    case 9009: /* reset */
-        shift = INDICATOR_RESET_SHIFT;
-        mask = INDICATOR_RESET_MASK;
-        break;
-    default:
-        DPRINTF("rtas_get_sensor_state: sensor not implemented: %d",
-                sensor);
-        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+    if (sensor_type != RTAS_SENSOR_TYPE_ENTITY_SENSE) { 
+        /* currently only DR-related sensors are implemented */
+        DPRINTF("rtas_get_sensor_state: sensor/indicator not implemented: %d",
+                sensor_type);
+        rtas_st(rets, 0, RTAS_OUT_NOT_SUPPORTED);
         return;
     }
 
-    decoded = DECODE_DRC_STATE(sensor_state, mask, shift);
+    drc = spapr_dr_connector_by_index(sensor_index);
+    if (!drc) {
+        DPRINTF("rtas_get_sensor_state: invalid sensor/DRC index: %xh",
+                sensor_index);
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    entity_sense = drck->entity_sense(drc);
+
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
-    rtas_st(rets, 1, decoded);
+    rtas_st(rets, 1, entity_sense);
 }
 
+#if 0
 /* configure-connector work area offsets, int32_t units */
 #define CC_IDX_NODE_NAME_OFFSET 2
 #define CC_IDX_PROP_NAME_OFFSET 2
 #define CC_IDX_PROP_LEN 3
 #define CC_IDX_PROP_DATA_OFFSET 4
-
 #define CC_VAL_DATA_OFFSET ((CC_IDX_PROP_DATA_OFFSET + 1) * 4)
 #define CC_RET_NEXT_SIB 1
 #define CC_RET_NEXT_CHILD 2
@@ -650,7 +594,9 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
 #define CC_RET_PREV_PARENT 4
 #define CC_RET_ERROR RTAS_OUT_HW_ERROR
 #define CC_RET_SUCCESS RTAS_OUT_SUCCESS
+#endif
 
+#if 0
 static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
                                          sPAPREnvironment *spapr,
                                          uint32_t token, uint32_t nargs,
@@ -745,6 +691,83 @@ error_exit:
     cpu_physical_memory_unmap(wa_buf, 0x1024, 1, 0x1024);
     rtas_st(rets, 0, rc);
 }
+#endif
+
+/* configure-connector work area offsets, int32_t units */
+#define CC_IDX_NODE_NAME_OFFSET 2
+#define CC_IDX_PROP_NAME_OFFSET 2
+#define CC_IDX_PROP_LEN 3
+#define CC_IDX_PROP_DATA_OFFSET 4
+#define CC_VAL_DATA_OFFSET ((CC_IDX_PROP_DATA_OFFSET + 1) * 4)
+
+static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
+                                         sPAPREnvironment *spapr,
+                                         uint32_t token, uint32_t nargs,
+                                         target_ulong args, uint32_t nret,
+                                         target_ulong rets)
+{
+    uint64_t wa_addr = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 0);
+    void *wa_buf;
+    int32_t *wa_buf_int;
+    hwaddr map_len = 0x1024;
+    uint32_t drc_index;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    sPAPRDRCCResponse resp;
+    const struct fdt_property *prop = NULL;
+    char *prop_name = NULL;
+    int prop_len, rc;
+
+    /* TODO: use rtas helpers for this */
+    wa_buf = cpu_physical_memory_map(wa_addr, &map_len, 1);
+    if (!wa_buf) {
+        DPRINTF("rtas_ibm_configure_connector: unable to map workarea");
+        rc = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+    wa_buf_int = wa_buf;
+
+    drc_index = *(uint32_t *)wa_buf;
+    drc = spapr_dr_connector_by_index(drc_index);
+    if (!drc) {
+        DPRINTF("rtas_ibm_configure_connector: invalid sensor/DRC index: %xh",
+                sensor_index);
+        rc = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    resp = drck->configure_connector(drc, &prop_name, &prop, &prop_len);
+
+    switch (resp) {
+    case SPAPR_DR_CC_RESPONSE_NEXT_CHILD:
+        wa_buf_int[CC_IDX_NODE_NAME_OFFSET] = CC_VAL_DATA_OFFSET;
+        strcpy(wa_buf + be32_to_cpu(wa_buf_int[CC_IDX_NODE_NAME_OFFSET]),
+               prop_name);
+        break;
+    case SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY:
+        wa_buf_int[CC_IDX_PROP_NAME_OFFSET] = cpu_to_be32(CC_VAL_DATA_OFFSET);
+        wa_buf_int[CC_IDX_PROP_LEN] = cpu_to_be32(prop_len);
+        wa_buf_int[CC_IDX_PROP_DATA_OFFSET] =
+            cpu_to_be32(CC_VAL_DATA_OFFSET + strlen(prop_name) + 1);
+        strcpy(wa_buf + be32_to_cpu(wa_buf_int[CC_IDX_PROP_NAME_OFFSET]),
+               prop_name);
+        memcpy(wa_buf + be32_to_cpu(wa_buf_int[CC_IDX_PROP_DATA_OFFSET]),
+               prop->data, prop_len);
+        break;
+    case SPAPR_DR_CC_RESPONSE_PREV_PARENT:
+    case SPAPR_DR_CC_RESPONSE_ERROR:
+    case SPAPR_DR_CC_RESPONSE_SUCCESS:
+        break;
+    default:
+        /* drck->configure_connector() should not return anything else */
+        g_assert(false);
+    }
+
+    rc = resp;
+out:
+    cpu_physical_memory_unmap(wa_buf, 0x1024, 1, 0x1024);
+    rtas_st(rets, 0, rc);
+}
 
 static int pci_spapr_swizzle(int slot, int pin)
 {
@@ -755,8 +778,7 @@ static int pci_spapr_map_irq(PCIDevice *pci_dev, int irq_num)
 {
     /*
      * Here we need to convert pci_dev + irq_num to some unique value
-     * which is less than number of IRQs on the specific bus (4).  We
-     * use standard PCI swizzling, that is (slot number + pin number)
+     * which is less than number of IRQs on the specific bus (4).  We * use standard PCI swizzling, that is (slot number + pin number)
      * % 4.
      */
     return pci_spapr_swizzle(PCI_SLOT(pci_dev->devfn), irq_num);
@@ -861,19 +883,14 @@ static void fill_resource_props(PCIDevice *d, int bus_num,
 }
 
 static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
-                                       int phb_index)
+                                       int phb_index, int drc_index)
 {
     int slot = PCI_SLOT(dev->devfn);
     char slotname[16];
     bool is_bridge = 1;
-    sPAPRDrcEntry *drc_entry, *drc_entry_slot;
     uint32_t reg[RESOURCE_CELLS_TOTAL * 8] = { 0 };
     uint32_t assigned[RESOURCE_CELLS_TOTAL * 8] = { 0 };
-    int reg_size, assigned_size;
-
-    drc_entry = spapr_phb_to_drc_entry(phb_index + SPAPR_PCI_BASE_BUID);
-    g_assert(drc_entry);
-    drc_entry_slot = &drc_entry->child_entries[slot];
+    int pci_status, reg_size, assigned_size;
 
     if (pci_default_read_config(dev, PCI_HEADER_TYPE, 1) ==
         PCI_HEADER_TYPE_NORMAL) {
@@ -908,7 +925,7 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
         pci_default_read_config(dev, PCI_CACHE_LINE_SIZE, 1)));
 
     /* the following fdt cells are masked off the pci status register */
-    int pci_status = pci_default_read_config(dev, PCI_STATUS, 2);
+    pci_status = pci_default_read_config(dev, PCI_STATUS, 2);
     _FDT(fdt_setprop_cell(fdt, offset, "devsel-speed",
                           PCI_STATUS_DEVSEL_MASK & pci_status));
     _FDT(fdt_setprop_cell(fdt, offset, "fast-back-to-back",
@@ -919,10 +936,9 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
                           PCI_STATUS_UDF & pci_status));
 
     _FDT(fdt_setprop_string(fdt, offset, "name", "pci"));
-    sprintf(slotname, "Slot %d", slot + phb_index * 32);
+    sprintf(slotname, "Slot %d", slot + phb_index * PCI_SLOT_MAX);
     _FDT(fdt_setprop(fdt, offset, "ibm,loc-code", slotname, strlen(slotname)));
-    _FDT(fdt_setprop_cell(fdt, offset, "ibm,my-drc-index",
-                          drc_entry_slot->drc_index));
+    _FDT(fdt_setprop_cell(fdt, offset, "ibm,my-drc-index", drc_index));
 
     _FDT(fdt_setprop_cell(fdt, offset, "#address-cells",
                           RESOURCE_CELLS_ADDRESS));
@@ -939,19 +955,78 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
     return 0;
 }
 
+/*
+static void spapr_drc_attach(PCIDevice *d, void *opaque)
+{
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PCI, d->devfn);
+    sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+
+    drck->attach(drc, DEVICE(d), NULL, false);
+}
+*/
+
+/* create OF node for pci device and required OF DT properties */
+static void *spapr_create_pci_child_dt(sPAPRPHBState *phb, PCIDevice *dev,
+                                       int drc_index, int *dt_offset)
+{
+    void *fdt_orig, *fdt;
+    int offset, ret;
+    int slot = PCI_SLOT(dev->devfn);
+    char nodename[512];
+
+    fdt_orig = g_malloc0(FDT_MAX_SIZE);
+    offset = fdt_create(fdt_orig, FDT_MAX_SIZE);
+    fdt_begin_node(fdt_orig, "");
+    fdt_end_node(fdt_orig);
+    fdt_finish(fdt_orig);
+
+    fdt = g_malloc0(FDT_MAX_SIZE);
+    fdt_open_into(fdt_orig, fdt, FDT_MAX_SIZE);
+    sprintf(nodename, "pci@%d", slot);
+    offset = fdt_add_subnode(fdt, 0, nodename);
+    ret = spapr_populate_pci_child_dt(dev, fdt, offset, phb->index, drc_index);
+    g_assert(!ret);
+    g_free(fdt_orig);
+
+    *dt_offset = offset;
+    return fdt;
+}
+
+static void spapr_device_hotplug_add(sPAPRPHBState *phb, PCIDevice *pdev)
+{
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PCI,
+                                 pdev->devfn);
+    sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    int drc_index = drck->get_index(drc);
+    int fdt_start_offset;
+    void *fdt;
+
+    g_warning("doing fdt");
+    fdt = spapr_create_pci_child_dt(phb, pdev, drc_index, &fdt_start_offset);
+    g_warning("doing attach");
+    if (DEVICE(pdev)->hotplugged) {
+        drck->attach(drc, DEVICE(pdev), fdt, fdt_start_offset, false);
+    } else {
+        /* FIXME: don't actually need fdt here */
+        drck->attach(drc, DEVICE(pdev), fdt, fdt_start_offset, true);
+    }
+}
+
+#if 0
 static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
 {
     sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
     sPAPRDrcEntry *drc_entry, *drc_entry_slot;
     sPAPRConfigureConnectorState *ccs;
     int slot = PCI_SLOT(dev->devfn);
-    int offset, ret;
-    void *fdt_orig, *fdt;
-    char nodename[512];
+    int offset;
     uint32_t encoded = ENCODE_DRC_STATE(INDICATOR_ENTITY_SENSE_PRESENT,
                                         INDICATOR_ENTITY_SENSE_MASK,
                                         INDICATOR_ENTITY_SENSE_SHIFT);
 
+    //spapr_drc_attach(dev, NULL);
     drc_entry = spapr_phb_to_drc_entry(phb->buid);
     g_assert(drc_entry);
     drc_entry_slot = &drc_entry->child_entries[slot];
@@ -973,31 +1048,19 @@ static int spapr_device_hotplug_add(DeviceState *qdev, PCIDevice *dev)
                                                   INDICATOR_ISOLATION_SHIFT);
     }
 
-    /* add OF node for pci device and required OF DT properties */
-    fdt_orig = g_malloc0(FDT_MAX_SIZE);
-    offset = fdt_create(fdt_orig, FDT_MAX_SIZE);
-    fdt_begin_node(fdt_orig, "");
-    fdt_end_node(fdt_orig);
-    fdt_finish(fdt_orig);
-
-    fdt = g_malloc0(FDT_MAX_SIZE);
-    fdt_open_into(fdt_orig, fdt, FDT_MAX_SIZE);
-    sprintf(nodename, "pci@%d", slot);
-    offset = fdt_add_subnode(fdt, 0, nodename);
-    ret = spapr_populate_pci_child_dt(dev, fdt, offset, phb->index);
-    g_assert(!ret);
-    g_free(fdt_orig);
 
     /* hold on to node, configure_connector will pass it to the guest later */
     ccs = &drc_entry_slot->cc_state;
-    ccs->fdt = fdt;
+    ccs->fdt = spapr_create_pci_child_dt(phb, dev, &offset);
     ccs->offset_start = offset;
     ccs->state = CC_STATE_PENDING;
     ccs->dev = dev;
 
     return 0;
 }
+#endif
 
+#if 0
 /* check whether guest has released/isolated device */
 static bool spapr_drc_state_is_releasable(sPAPRDrcEntry *drc_entry)
 {
@@ -1005,7 +1068,9 @@ static bool spapr_drc_state_is_releasable(sPAPRDrcEntry *drc_entry)
                              INDICATOR_ISOLATION_MASK,
                              INDICATOR_ISOLATION_SHIFT);
 }
+#endif
 
+#if 0
 /* finalize device unplug/deletion */
 static void spapr_drc_state_reset(sPAPRDrcEntry *drc_entry)
 {
@@ -1023,7 +1088,27 @@ static void spapr_drc_state_reset(sPAPRDrcEntry *drc_entry)
     drc_entry->state |= sense_empty;
     drc_entry->awaiting_release = false;
 }
+#endif
 
+static void spapr_device_hotplug_remove_cb(DeviceState *dev, void *opaque)
+{
+    g_warning("doing device cleanup");
+    object_unparent(OBJECT(dev));
+    /* add qmp event */
+}
+
+static void spapr_device_hotplug_remove(sPAPRPHBState *phb, PCIDevice *dev)
+{
+    sPAPRDRConnector *drc =
+        spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PCI,
+                                 dev->devfn);
+    sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+
+    g_warning("doing detach");
+    drck->detach(drc, DEVICE(dev), spapr_device_hotplug_remove_cb, phb);
+}
+
+#if 0
 static void spapr_device_hotplug_remove(DeviceState *qdev, PCIDevice *dev)
 {
     sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(qdev);
@@ -1051,25 +1136,29 @@ static void spapr_device_hotplug_remove(DeviceState *qdev, PCIDevice *dev)
         }
     }
 }
+#endif
 
 static void spapr_phb_hot_plug(HotplugHandler *plug_handler,
                                DeviceState *plugged_dev, Error **errp)
 {
-    int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
+    sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(DEVICE(plug_handler));
+    PCIDevice *pdev = PCI_DEVICE(plugged_dev);
 
-    spapr_device_hotplug_add(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
+    spapr_device_hotplug_add(phb, pdev);
     if (plugged_dev->hotplugged) {
-        spapr_pci_hotplug_add_event(DEVICE(plug_handler), slot);
+        spapr_pci_hotplug_add_event(DEVICE(plug_handler),
+                                    PCI_SLOT(pdev->devfn));
     }
 }
 
 static void spapr_phb_hot_unplug(HotplugHandler *plug_handler,
                                  DeviceState *plugged_dev, Error **errp)
 {
-    int slot = PCI_SLOT(PCI_DEVICE(plugged_dev)->devfn);
+    sPAPRPHBState *phb = SPAPR_PCI_HOST_BRIDGE(DEVICE(plug_handler));
+    PCIDevice *pdev = PCI_DEVICE(plugged_dev);
 
-    spapr_device_hotplug_remove(DEVICE(plug_handler), PCI_DEVICE(plugged_dev));
-    spapr_pci_hotplug_remove_event(DEVICE(plug_handler), slot);
+    spapr_device_hotplug_remove(phb, pdev);
+    spapr_pci_hotplug_remove_event(DEVICE(plug_handler), PCI_SLOT(pdev->devfn));
 }
 
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
@@ -1107,6 +1196,12 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     if (sphb->buid == -1) {
         error_setg(errp, "BUID not specified for PHB");
         return;
+    }
+
+    /* FIXME: just for testing */
+    spapr_dr_connector_new(SPAPR_DR_CONNECTOR_TYPE_PHB, sphb->buid);
+    for (i = 0; i < PCI_SLOT_MAX; i++) {
+        spapr_dr_connector_new(SPAPR_DR_CONNECTOR_TYPE_PCI, i << 3);
     }
 
     if (sphb->dma_liobn == -1) {
@@ -1217,6 +1312,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         sphb->lsi_table[i].irq = irq;
     }
 
+#if 0
     /* make sure the platform EPOW sensor is initialized - the
      * guest will probe it when there is a hotplug event.
      */
@@ -1224,6 +1320,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     spapr->state |= ENCODE_DRC_STATE(0,
                                      INDICATOR_EPOW_MASK,
                                      INDICATOR_EPOW_SHIFT);
+#endif
 
     if (!info->finish_realize) {
         error_setg(errp, "finish_realize not defined");
