@@ -1650,6 +1650,10 @@ static void ppc_spapr_init(MachineState *machine)
                                             boot_device, kernel_cmdline,
                                             spapr->epow_irq);
     assert(spapr->fdt_skel != NULL);
+
+    /* used by RTAS */
+    QTAILQ_INIT(&spapr->ccs_list);
+    qemu_register_reset(spapr_ccs_reset_hook, spapr);
 }
 
 static int spapr_kvm_type(const char *vm_type)
