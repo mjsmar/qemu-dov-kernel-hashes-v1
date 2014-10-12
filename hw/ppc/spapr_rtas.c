@@ -418,6 +418,92 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 1, entity_sense);
 }
 
+/* configure-connector work area offsets, int32_t units for field
+ * indexes, bytes for field offset/len values.
+ *
+ * as documented by PAPR+ v2.7, 13.5.3.5
+ */
+#define CC_IDX_NODE_NAME_OFFSET 2
+#define CC_IDX_PROP_NAME_OFFSET 2
+#define CC_IDX_PROP_LEN 3
+#define CC_IDX_PROP_DATA_OFFSET 4
+#define CC_VAL_DATA_OFFSET ((CC_IDX_PROP_DATA_OFFSET + 1) * 4)
+#define CC_WA_LEN 4096
+
+static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
+                                         sPAPREnvironment *spapr,
+                                         uint32_t token, uint32_t nargs,
+                                         target_ulong args, uint32_t nret,
+                                         target_ulong rets)
+{
+    uint64_t wa_addr;
+    uint64_t wa_offset;
+    uint32_t drc_index;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    sPAPRDRCCResponse resp;
+    const struct fdt_property *prop = NULL;
+    char *prop_name = NULL;
+    int prop_len, rc;
+
+    if (nargs != 2 || nret != 1) {
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    wa_addr = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 0);
+
+    drc_index = rtas_ld(wa_addr, 0);
+    drc = spapr_dr_connector_by_index(drc_index);
+    if (!drc) {
+        DPRINTF("rtas_ibm_configure_connector: invalid sensor/DRC index: %xh\n",
+                drc_index);
+        rc = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    resp = drck->configure_connector(drc, &prop_name, &prop, &prop_len);
+
+    switch (resp) {
+    case SPAPR_DR_CC_RESPONSE_NEXT_CHILD:
+        /* provide the name of the next OF node */
+        wa_offset = CC_VAL_DATA_OFFSET;
+        rtas_st(wa_addr, CC_IDX_NODE_NAME_OFFSET, wa_offset);
+        rtas_st_buffer_direct(wa_addr + wa_offset, CC_WA_LEN - wa_offset,
+                              (uint8_t *)prop_name, strlen(prop_name) + 1);
+        break;
+    case SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY:
+        /* provide the name of the next OF property */
+        wa_offset = CC_VAL_DATA_OFFSET;
+        rtas_st(wa_addr, CC_IDX_PROP_NAME_OFFSET, wa_offset);
+        rtas_st_buffer_direct(wa_addr + wa_offset, CC_WA_LEN - wa_offset,
+                              (uint8_t *)prop_name, strlen(prop_name) + 1);
+
+        /* provide the length and value of the OF property. data gets placed
+         * immediately after NULL terminator of the OF property's name string
+         */
+        wa_offset += strlen(prop_name) + 1,
+        rtas_st(wa_addr, CC_IDX_PROP_LEN, prop_len);
+        rtas_st(wa_addr, CC_IDX_PROP_DATA_OFFSET, wa_offset);
+        rtas_st_buffer_direct(wa_addr + wa_offset, CC_WA_LEN - wa_offset,
+                              (uint8_t *)((struct fdt_property *)prop)->data,
+                              prop_len);
+        break;
+    case SPAPR_DR_CC_RESPONSE_PREV_PARENT:
+    case SPAPR_DR_CC_RESPONSE_ERROR:
+    case SPAPR_DR_CC_RESPONSE_SUCCESS:
+        break;
+    default:
+        /* drck->configure_connector() should not return anything else */
+        g_assert(false);
+    }
+
+    rc = resp;
+out:
+    g_free(prop_name);
+    rtas_st(rets, 0, rc);
+}
+
 static struct rtas_call {
     const char *name;
     spapr_rtas_fn fn;
@@ -551,6 +637,8 @@ static void core_rtas_register_types(void)
                         rtas_set_indicator);
     spapr_rtas_register(RTAS_GET_SENSOR_STATE, "get-sensor-state",
                         rtas_get_sensor_state);
+    spapr_rtas_register(RTAS_IBM_CONFIGURE_CONNECTOR, "ibm,configure-connector",
+                        rtas_ibm_configure_connector);
 }
 
 type_init(core_rtas_register_types)
