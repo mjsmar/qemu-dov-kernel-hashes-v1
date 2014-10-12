@@ -418,6 +418,151 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 1, entity_sense);
 }
 
+/* configure-connector work area offsets, int32_t units for field
+ * indexes, bytes for field offset/len values.
+ *
+ * as documented by PAPR+ v2.7, 13.5.3.5
+ */
+#define CC_IDX_NODE_NAME_OFFSET 2
+#define CC_IDX_PROP_NAME_OFFSET 2
+#define CC_IDX_PROP_LEN 3
+#define CC_IDX_PROP_DATA_OFFSET 4
+#define CC_VAL_DATA_OFFSET ((CC_IDX_PROP_DATA_OFFSET + 1) * 4)
+#define CC_WA_LEN 4096
+
+typedef struct sPAPRDRCCState {
+    void *fdt;
+    int fdt_offset;
+    int fdt_depth;
+} sPAPRDRCCState;
+
+static void init_ccs(void *opaque, void *fdt, int fdt_start_offset)
+{
+    sPAPRDRCCState *ccs = opaque;
+    ccs->fdt_offset = fdt_start_offset;
+    ccs->fdt = fdt;
+    ccs->fdt_depth = 0;
+}
+
+static void reset_ccs(void *opaque)
+{
+    g_free(opaque);
+}
+
+static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
+                                         sPAPREnvironment *spapr,
+                                         uint32_t token, uint32_t nargs,
+                                         target_ulong args, uint32_t nret,
+                                         target_ulong rets)
+{
+    uint64_t wa_addr;
+    uint64_t wa_offset;
+    uint32_t drc_index;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    sPAPRDRCCState *ccs;
+    sPAPRDRCCResponse resp = SPAPR_DR_CC_RESPONSE_CONTINUE;
+    int rc;
+
+    if (nargs != 2 || nret != 1) {
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    wa_addr = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 0);
+
+    drc_index = rtas_ld(wa_addr, 0);
+    drc = spapr_dr_connector_by_index(drc_index);
+    if (!drc) {
+        DPRINTF("rtas_ibm_configure_connector: invalid DRC index: %xh\n",
+                drc_index);
+        rc = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    ccs = drck->get_configure_connector_state(drc);
+    if (!ccs) {
+        ccs = g_new0(sPAPRDRCCState, 1);
+        if (!drck->begin_configure_connector(drc, init_ccs, reset_ccs, ccs)) {
+            DPRINTF("rtas_ibm_configure_connector: DRC index: %xh "
+                    "unavailable for configuration\n",
+                    drc_index);
+            rc = RTAS_OUT_PARAM_ERROR;
+            goto out;
+        }
+    }
+
+    do {
+        uint32_t tag;
+        const char *name;
+        const struct fdt_property *prop;
+        int fdt_offset_next, prop_len;
+
+        tag = fdt_next_tag(ccs->fdt, ccs->fdt_offset, &fdt_offset_next);
+
+        switch (tag) {
+        case FDT_BEGIN_NODE:
+            ccs->fdt_depth++;
+            name = fdt_get_name(ccs->fdt, ccs->fdt_offset, NULL);
+
+            /* provide the name of the next OF node */
+            wa_offset = CC_VAL_DATA_OFFSET;
+            rtas_st(wa_addr, CC_IDX_NODE_NAME_OFFSET, wa_offset);
+            rtas_st_buffer_direct(wa_addr + wa_offset, CC_WA_LEN - wa_offset,
+                                  (uint8_t *)name, strlen(name) + 1);
+            resp = SPAPR_DR_CC_RESPONSE_NEXT_CHILD;
+            break;
+        case FDT_END_NODE:
+            ccs->fdt_depth--;
+            if (ccs->fdt_depth == 0) {
+                drck->complete_configure_connector(drc);
+                /* ccs should be free at this point */
+                ccs = NULL;
+                resp = SPAPR_DR_CC_RESPONSE_SUCCESS;
+            } else {
+                resp = SPAPR_DR_CC_RESPONSE_PREV_PARENT;
+            }
+            break;
+        case FDT_PROP:
+            prop = fdt_get_property_by_offset(ccs->fdt, ccs->fdt_offset,
+                                              &prop_len);
+            name = fdt_string(ccs->fdt, fdt32_to_cpu(prop->nameoff));
+
+            /* provide the name of the next OF property */
+            wa_offset = CC_VAL_DATA_OFFSET;
+            rtas_st(wa_addr, CC_IDX_PROP_NAME_OFFSET, wa_offset);
+            rtas_st_buffer_direct(wa_addr + wa_offset, CC_WA_LEN - wa_offset,
+                                  (uint8_t *)name, strlen(name) + 1);
+
+            /* provide the length and value of the OF property. data gets
+             * placed immediately after NULL terminator of the OF property's
+             * name string
+             */
+            wa_offset += strlen(name) + 1,
+            rtas_st(wa_addr, CC_IDX_PROP_LEN, prop_len);
+            rtas_st(wa_addr, CC_IDX_PROP_DATA_OFFSET, wa_offset);
+            rtas_st_buffer_direct(wa_addr + wa_offset, CC_WA_LEN - wa_offset,
+                                  (uint8_t *)((struct fdt_property *)prop)->data,
+                                  prop_len);
+            resp = SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY;
+            break;
+        case FDT_END:
+            resp = SPAPR_DR_CC_RESPONSE_ERROR;
+        default:
+            /* keep seeking for an actionable tag */
+            break;
+        }
+        if (ccs) {
+            ccs->fdt_offset = fdt_offset_next;
+        }
+    } while (resp == SPAPR_DR_CC_RESPONSE_CONTINUE);
+
+    rc = resp;
+out:
+    rtas_st(rets, 0, rc);
+}
+
 static struct rtas_call {
     const char *name;
     spapr_rtas_fn fn;
@@ -551,6 +696,8 @@ static void core_rtas_register_types(void)
                         rtas_set_indicator);
     spapr_rtas_register(RTAS_GET_SENSOR_STATE, "get-sensor-state",
                         rtas_get_sensor_state);
+    spapr_rtas_register(RTAS_IBM_CONFIGURE_CONNECTOR, "ibm,configure-connector",
+                        rtas_ibm_configure_connector);
 }
 
 type_init(core_rtas_register_types)
