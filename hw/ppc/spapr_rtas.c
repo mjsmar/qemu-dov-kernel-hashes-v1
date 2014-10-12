@@ -422,6 +422,82 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 1, entity_sense);
 }
 
+/* configure-connector work area offsets, int32_t units */
+#define CC_IDX_NODE_NAME_OFFSET 2
+#define CC_IDX_PROP_NAME_OFFSET 2
+#define CC_IDX_PROP_LEN 3
+#define CC_IDX_PROP_DATA_OFFSET 4
+#define CC_VAL_DATA_OFFSET ((CC_IDX_PROP_DATA_OFFSET + 1) * 4)
+
+static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
+                                         sPAPREnvironment *spapr,
+                                         uint32_t token, uint32_t nargs,
+                                         target_ulong args, uint32_t nret,
+                                         target_ulong rets)
+{
+    uint64_t wa_addr = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 0);
+    void *wa_buf;
+    int32_t *wa_buf_int;
+    hwaddr map_len = 0x1024;
+    uint32_t drc_index;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    sPAPRDRCCResponse resp;
+    const struct fdt_property *prop = NULL;
+    char *prop_name = NULL;
+    int prop_len, rc;
+
+    /* TODO: use rtas helpers for this */
+    wa_buf = cpu_physical_memory_map(wa_addr, &map_len, 1);
+    if (!wa_buf) {
+        DPRINTF("rtas_ibm_configure_connector: unable to map workarea");
+        rc = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+    wa_buf_int = wa_buf;
+
+    drc_index = *(uint32_t *)wa_buf;
+    drc = spapr_dr_connector_by_index(drc_index);
+    if (!drc) {
+        DPRINTF("rtas_ibm_configure_connector: invalid sensor/DRC index: %xh",
+                sensor_index);
+        rc = RTAS_OUT_PARAM_ERROR;
+        goto out;
+    }
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+    resp = drck->configure_connector(drc, &prop_name, &prop, &prop_len);
+
+    switch (resp) {
+    case SPAPR_DR_CC_RESPONSE_NEXT_CHILD:
+        wa_buf_int[CC_IDX_NODE_NAME_OFFSET] = CC_VAL_DATA_OFFSET;
+        strcpy(wa_buf + be32_to_cpu(wa_buf_int[CC_IDX_NODE_NAME_OFFSET]),
+               prop_name);
+        break;
+    case SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY:
+        wa_buf_int[CC_IDX_PROP_NAME_OFFSET] = cpu_to_be32(CC_VAL_DATA_OFFSET);
+        wa_buf_int[CC_IDX_PROP_LEN] = cpu_to_be32(prop_len);
+        wa_buf_int[CC_IDX_PROP_DATA_OFFSET] =
+            cpu_to_be32(CC_VAL_DATA_OFFSET + strlen(prop_name) + 1);
+        strcpy(wa_buf + be32_to_cpu(wa_buf_int[CC_IDX_PROP_NAME_OFFSET]),
+               prop_name);
+        memcpy(wa_buf + be32_to_cpu(wa_buf_int[CC_IDX_PROP_DATA_OFFSET]),
+               prop->data, prop_len);
+        break;
+    case SPAPR_DR_CC_RESPONSE_PREV_PARENT:
+    case SPAPR_DR_CC_RESPONSE_ERROR:
+    case SPAPR_DR_CC_RESPONSE_SUCCESS:
+        break;
+    default:
+        /* drck->configure_connector() should not return anything else */
+        g_assert(false);
+    }
+
+    rc = resp;
+out:
+    cpu_physical_memory_unmap(wa_buf, 0x1024, 1, 0x1024);
+    rtas_st(rets, 0, rc);
+}
+
 static struct rtas_call {
     const char *name;
     spapr_rtas_fn fn;
@@ -559,6 +635,8 @@ static void core_rtas_register_types(void)
                         rtas_set_indicator);
     spapr_rtas_register(RTAS_GET_SENSOR_STATE, "get-sensor-state",
                         rtas_get_sensor_state);
+    spapr_rtas_register(RTAS_IBM_CONFIGURE_CONNECTOR, "ibm,configure-connector",
+                        rtas_ibm_configure_connector);
 }
 
 type_init(core_rtas_register_types)
