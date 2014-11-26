@@ -47,6 +47,8 @@
 #define RTAS_TYPE_MSI           1
 #define RTAS_TYPE_MSIX          2
 
+#include "hw/ppc/spapr_drc.h"
+
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
     sPAPRPHBState *sphb;
@@ -620,6 +622,15 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         }
 
         sphb->lsi_table[i].irq = irq;
+    }
+
+    /* allocate connectors for child PCI devices */
+    if (sphb->dr_enabled) {
+        for (i = 0; i < PCI_SLOT_MAX; i++) {
+            spapr_dr_connector_new(OBJECT(phb),
+                                   SPAPR_DR_CONNECTOR_TYPE_PCI,
+                                   (sphb->index << 8) | (i << 3));
+        }
     }
 
     if (!info->finish_realize) {
