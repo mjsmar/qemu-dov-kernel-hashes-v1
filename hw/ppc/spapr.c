@@ -59,6 +59,7 @@
 #include "qemu/error-report.h"
 #include "trace.h"
 #include "hw/nmi.h"
+#include "hw/ppc/spapr_drc.h"
 
 #include "hw/compat.h"
 #include "hw/mem/pc-dimm.h"
@@ -983,6 +984,16 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
                                     SPAPR_DR_CONNECTOR_TYPE_CPU);
         if (ret < 0) {
             fprintf(stderr, "Couldn't set up CPU DR device tree properties\n");
+            exit(1);
+        }
+    }
+
+    if (spapr->dr_phb_enable) {
+        int offset = fdt_path_offset(fdt, "/");
+        ret = spapr_drc_populate_dt(fdt, offset, NULL,
+                                    SPAPR_DR_CONNECTOR_TYPE_PHB);
+        if (ret < 0) {
+            fprintf(stderr, "Couldn't set up PHB DR device tree properties\n");
             exit(1);
         }
     }
