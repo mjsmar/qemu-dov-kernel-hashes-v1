@@ -30,6 +30,7 @@ typedef struct sPAPREnvironment {
     uint64_t rtc_offset;
     struct PPCTimebase tb;
     bool has_graphics;
+    bool dr_phb_enabled; /* hotplug / dynamic-reconfiguration of PHBs */
 
     uint32_t check_exception_irq;
     Notifier epow_notifier;
