@@ -47,6 +47,8 @@
 #define RTAS_TYPE_MSI           1
 #define RTAS_TYPE_MSIX          2
 
+#define FDT_MAX_SIZE            0x10000
+
 #include "hw/ppc/spapr_drc.h"
 
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
@@ -872,7 +874,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
                           uint32_t xics_phandle,
                           void *fdt)
 {
-    int bus_off, i, j;
+    int bus_off, i, j, ret;
     char nodename[256];
     uint32_t bus_range[] = { cpu_to_be32(0), cpu_to_be32(0xff) };
     struct {
@@ -950,6 +952,11 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
 
     object_child_foreach(OBJECT(phb), spapr_phb_children_dt,
                          &((sPAPRTCEDT){ .fdt = fdt, .node_off = bus_off }));
+
+    ret = spapr_drc_populate_dt(fdt, bus_off, SPAPR_DR_CONNECTOR_TYPE_PCI);
+    if (ret) {
+        return ret;
+    }
 
     return 0;
 }
