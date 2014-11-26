@@ -1752,11 +1752,27 @@ static const TypeInfo spapr_machine_info = {
     },
 };
 
+/* pSeries-specific hardware compatibility properties
+ *
+ * As with PC machines and general hardware properties, older
+ * machine types inherit backward-compability properties needed
+ * for subsequent machine types.
+ */
+#define PPC_HW_COMPAT_2_2 \
+        {\
+            .driver   = "spapr-pci-host-bridge",\
+            .property = "dynamic-reconfiguration",\
+            .value    = "off",\
+        }
+
+#define PPC_HW_COMPAT_2_1 PPC_HW_COMPAT_2_2
+
 static void spapr_machine_2_1_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     static GlobalProperty compat_props[] = {
         HW_COMPAT_2_1,
+        PPC_HW_COMPAT_2_1,
         { /* end of list */ }
     };
 
@@ -1774,9 +1790,14 @@ static const TypeInfo spapr_machine_2_1_info = {
 static void spapr_machine_2_2_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    static GlobalProperty compat_props[] = {
+        PPC_HW_COMPAT_2_2,
+        { /* end of list */ }
+    };
 
     mc->name = "pseries-2.2";
     mc->desc = "pSeries Logical Partition (PAPR compliant) v2.2";
+    mc->compat_props = compat_props;
 }
 
 static const TypeInfo spapr_machine_2_2_info = {
