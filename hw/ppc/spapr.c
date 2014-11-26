@@ -1819,11 +1819,27 @@ static const TypeInfo spapr_machine_info = {
     },
 };
 
+/* pSeries-specific hardware compatibility properties
+ *
+ * As with PC machines and general hardware properties, older
+ * machine types inherit backward-compability properties needed
+ * for subsequent machine types.
+ */
+#define PPC_HW_COMPAT_2_2 \
+        {\
+            .driver   = "spapr-pci-host-bridge",\
+            .property = "dynamic-reconfiguration",\
+            .value    = "off",\
+        }
+
+#define PPC_HW_COMPAT_2_1 PPC_HW_COMPAT_2_2
+
 static void spapr_machine_2_1_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     static GlobalProperty compat_props[] = {
         HW_COMPAT_2_1,
+        PPC_HW_COMPAT_2_1,
         { /* end of list */ }
     };
 
@@ -1841,11 +1857,14 @@ static const TypeInfo spapr_machine_2_1_info = {
 static void spapr_machine_2_2_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    static GlobalProperty compat_props[] = {
+        PPC_HW_COMPAT_2_2,
+        { /* end of list */ }
+    };
 
     mc->name = "pseries-2.2";
     mc->desc = "pSeries Logical Partition (PAPR compliant) v2.2";
-    mc->alias = "pseries";
-    mc->is_default = 1;
+    mc->compat_props = compat_props;
 }
 
 static const TypeInfo spapr_machine_2_2_info = {
@@ -1854,11 +1873,28 @@ static const TypeInfo spapr_machine_2_2_info = {
     .class_init    = spapr_machine_2_2_class_init,
 };
 
+static void spapr_machine_2_3_class_init(ObjectClass *oc, void *data)
+{
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    mc->name = "pseries-2.3";
+    mc->desc = "pSeries Logical Partition (PAPR compliant) v2.3";
+    mc->alias = "pseries";
+    mc->is_default = 1;
+}
+
+static const TypeInfo spapr_machine_2_3_info = {
+    .name          = TYPE_SPAPR_MACHINE "2.3",
+    .parent        = TYPE_SPAPR_MACHINE,
+    .class_init    = spapr_machine_2_3_class_init,
+};
+
 static void spapr_machine_register_types(void)
 {
     type_register_static(&spapr_machine_info);
     type_register_static(&spapr_machine_2_1_info);
     type_register_static(&spapr_machine_2_2_info);
+    type_register_static(&spapr_machine_2_3_info);
 }
 
 type_init(spapr_machine_register_types)
