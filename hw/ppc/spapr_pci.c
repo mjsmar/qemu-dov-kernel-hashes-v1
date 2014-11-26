@@ -47,6 +47,8 @@
 #define RTAS_TYPE_MSI           1
 #define RTAS_TYPE_MSIX          2
 
+#include "hw/ppc/spapr_drc.h"
+
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
     sPAPRPHBState *sphb;
@@ -620,6 +622,43 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         }
 
         sphb->lsi_table[i].irq = irq;
+    }
+
+    /* Associate PHB with a DR connector (to enable sensor state reporting,
+     * and eventually unplug), and allocate connectors for child PCI devices
+     */
+    if (sphb->dr_enabled) {
+        /* TODO: it's not mandatory that a PHB be associated with a
+         * dr-connector except to support PHB hotplug. so introduce
+         * this as part of PHB hotplug support as opposed to making
+         * it a dependency for PCI hotplug
+         */
+#if 0
+        for (i = 0; i < SPAPR_DRC_MAX_PHB; i++) {
+            sPAPRDRConnector *drc;
+            sPAPRDRConnectorClass *drck;
+
+            drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PHB, i);
+            if (drc) {
+                drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+                if (drck->entity_sense(drc) == SPAPR_DR_ENTITY_SENSE_EMPTY) {
+                    drck->attach(drc, DEVICE(sphb), NULL, 0, true);
+                    break;
+                }
+            }
+        }
+
+        if (i == SPAPR_DRC_MAX_PHB) {
+            error_setg(errp, "Unable to find free DR connector for PHB");
+            return;
+        }
+#endif
+
+        for (i = 0; i < PCI_SLOT_MAX; i++) {
+            spapr_dr_connector_new(OBJECT(phb),
+                                   SPAPR_DR_CONNECTOR_TYPE_PCI,
+                                   (sphb->index << 8) | (i << 3));
+        }
     }
 
     if (!info->finish_realize) {
