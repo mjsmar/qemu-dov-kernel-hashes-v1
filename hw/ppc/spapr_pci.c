@@ -47,6 +47,15 @@
 #define RTAS_TYPE_MSI           1
 #define RTAS_TYPE_MSIX          2
 
+#define FDT_MAX_SIZE            0x10000
+#define _FDT(exp) \
+    do { \
+        int ret = (exp);                                           \
+        if (ret < 0) {                                             \
+            return ret;                                            \
+        }                                                          \
+    } while (0)
+
 #include "hw/ppc/spapr_drc.h"
 
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
@@ -896,6 +905,109 @@ static int spapr_phb_children_dt(Object *child, void *opaque)
     return 1;
 }
 
+static void spapr_create_drc_phb_dt_entries(void *fdt, int bus_off,
+                                            int phb_index)
+{
+    char char_buf[1024];
+    uint32_t int_buf[PCI_SLOT_MAX + 1];
+    uint32_t *entries;
+    int i, ret, offset;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+
+    /* ibm,drc-indexes */
+    memset(int_buf, 0 , sizeof(int_buf));
+    int_buf[0] = PCI_SLOT_MAX;
+
+    for (i = 1; i < PCI_SLOT_MAX; i++) {
+        //int_buf[i] = SPAPR_DRC_DEV_ID_BASE + (phb_index << 8) + ((i - 1) << 3);
+        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PCI,
+                                       (phb_index << 8) | (i << 3));
+        g_assert(drc);
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        int_buf[i-1] = drck->get_index(drc);
+    }
+
+    ret = fdt_setprop(fdt, bus_off, "ibm,drc-indexes", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "error adding 'ibm,drc-indexes' field for PHB FDT");
+    }
+
+    /* ibm,drc-power-domains */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = PCI_SLOT_MAX;
+
+    for (i = 1; i <= PCI_SLOT_MAX; i++) {
+        int_buf[i] = 0xffffffff;
+    }
+
+    ret = fdt_setprop(fdt, bus_off, "ibm,drc-power-domains", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr,
+                "error adding 'ibm,drc-power-domains' field for PHB FDT");
+    }
+
+    /* ibm,drc-names */
+    memset(char_buf, 0, sizeof(char_buf));
+    entries = (uint32_t *)&char_buf[0];
+    *entries = PCI_SLOT_MAX;
+    offset = sizeof(*entries);
+
+    for (i = 1; i <= PCI_SLOT_MAX; i++) {
+        offset += sprintf(char_buf + offset, "Slot %d",
+                          (phb_index * PCI_SLOT_MAX) + i - 1);
+        char_buf[offset++] = '\0';
+    }
+
+    ret = fdt_setprop(fdt, bus_off, "ibm,drc-names", char_buf, offset);
+    if (ret) {
+        fprintf(stderr, "error adding 'ibm,drc-names' field for PHB FDT");
+    }
+
+    /* ibm,drc-types */
+    memset(char_buf, 0, sizeof(char_buf));
+    entries = (uint32_t *)&char_buf[0];
+    *entries = PCI_SLOT_MAX;
+    offset = sizeof(*entries);
+
+    for (i = 0; i < PCI_SLOT_MAX; i++) {
+        offset += sprintf(char_buf + offset, "28");
+        char_buf[offset++] = '\0';
+    }
+
+    ret = fdt_setprop(fdt, bus_off, "ibm,drc-types", char_buf, offset);
+    if (ret) {
+        fprintf(stderr, "error adding 'ibm,drc-types' field for PHB FDT");
+    }
+
+    /* we want the initial indicator state to be 0 - "empty", when we
+     * hot-plug an adaptor in the slot, we need to set the indicator
+     * to 1 - "present."
+     */
+
+    /* ibm,indicator-9003 */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = PCI_SLOT_MAX;
+
+    ret = fdt_setprop(fdt, bus_off, "ibm,indicator-9003", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "error adding 'ibm,indicator-9003' field for PHB FDT");
+    }
+
+    /* ibm,sensor-9003 */
+    memset(int_buf, 0, sizeof(int_buf));
+    int_buf[0] = PCI_SLOT_MAX;
+
+    ret = fdt_setprop(fdt, bus_off, "ibm,sensor-9003", int_buf,
+                      sizeof(int_buf));
+    if (ret) {
+        fprintf(stderr, "error adding 'ibm,sensor-9003' field for PHB FDT");
+    }
+}
+
 int spapr_populate_pci_dt(sPAPRPHBState *phb,
                           uint32_t xics_phandle,
                           void *fdt)
@@ -924,6 +1036,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     uint32_t interrupt_map_mask[] = {
         cpu_to_be32(b_ddddd(-1)|b_fff(0)), 0x0, 0x0, cpu_to_be32(-1)};
     uint32_t interrupt_map[PCI_SLOT_MAX * PCI_NUM_PINS][7];
+    sPAPRDRConnector *drc;
 
     /* Start populating the FDT */
     sprintf(nodename, "pci@%" PRIx64, phb->buid);
@@ -931,14 +1044,6 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     if (bus_off < 0) {
         return bus_off;
     }
-
-#define _FDT(exp) \
-    do { \
-        int ret = (exp);                                           \
-        if (ret < 0) {                                             \
-            return ret;                                            \
-        }                                                          \
-    } while (0)
 
     /* Write PHB properties */
     _FDT(fdt_setprop_string(fdt, bus_off, "device_type", "pci"));
@@ -978,6 +1083,18 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
 
     object_child_foreach(OBJECT(phb), spapr_phb_children_dt,
                          &((sPAPRTCEDT){ .fdt = fdt, .node_off = bus_off }));
+
+    drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PHB, phb->index);
+    if (drc) {
+        sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        uint32_t drc_index = drck->get_index(drc);
+
+        _FDT(fdt_setprop(fdt, bus_off, "ibm,my-drc-index", &drc_index,
+                         sizeof(drc_index)));
+    }
+    if (phb->dr_enabled) {
+        spapr_create_drc_phb_dt_entries(fdt, bus_off, phb->index);
+    }
 
     return 0;
 }
