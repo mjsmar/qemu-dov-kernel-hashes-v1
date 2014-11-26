@@ -47,6 +47,8 @@
 #define RTAS_TYPE_MSI           1
 #define RTAS_TYPE_MSIX          2
 
+#include "hw/ppc/spapr_drc.h"
+
 static sPAPRPHBState *find_phb(sPAPREnvironment *spapr, uint64_t buid)
 {
     sPAPRPHBState *sphb;
@@ -618,6 +620,15 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         sphb->lsi_table[i].irq = irq;
     }
 
+    /* allocate connectors for child PCI devices */
+    if (sphb->dr_enabled) {
+        for (i = 0; i < PCI_SLOT_MAX; i++) {
+            spapr_dr_connector_new(OBJECT(phb),
+                                   SPAPR_DR_CONNECTOR_TYPE_PCI,
+                                   (sphb->index << 16) | (i << 3));
+        }
+    }
+
     if (!info->finish_realize) {
         error_setg(errp, "finish_realize not defined");
         return;
@@ -857,7 +868,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
                           uint32_t xics_phandle,
                           void *fdt)
 {
-    int bus_off, i, j;
+    int bus_off, i, j, ret;
     char nodename[256];
     uint32_t bus_range[] = { cpu_to_be32(0), cpu_to_be32(0xff) };
     struct {
@@ -935,6 +946,12 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
 
     object_child_foreach(OBJECT(phb), spapr_phb_children_dt,
                          &((sPAPRTCEDT){ .fdt = fdt, .node_off = bus_off }));
+
+    ret = spapr_drc_populate_dt(fdt, bus_off, OBJECT(phb),
+                                SPAPR_DR_CONNECTOR_TYPE_PCI);
+    if (ret) {
+        return ret;
+    }
 
     return 0;
 }
