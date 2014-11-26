@@ -95,6 +95,9 @@
 
 #define HTAB_SIZE(spapr)        (1ULL << ((spapr)->htab_shift))
 
+/* maximum number of hotpluggable PHBs */
+#define SPAPR_DRC_MAX_PHB       (SPAPR_PCI_MAX_INDEX + 1)
+
 typedef struct sPAPRMachineClass sPAPRMachineClass;
 typedef struct sPAPRMachineState sPAPRMachineState;
 
@@ -1814,6 +1817,21 @@ static void ppc_spapr_init(MachineState *machine)
     spapr_create_nvram(spapr);
 
     spapr->dr_phb_enabled = smc->dr_phb_enabled;
+
+    /* Setup hotplug / dynamic-reconfiguration connectors. top-level
+     * connectors (described in root DT node's "ibm,drc-types" property)
+     * are pre-initialized here. additional child connectors (such as
+     * connectors for a PHBs PCI slots) are added as needed during their
+     * parent's realization.
+     */
+    if (spapr->dr_phb_enabled) {
+        for (i = 0; i < SPAPR_DRC_MAX_PHB; i++) {
+            sPAPRDRConnector *drc =
+                spapr_dr_connector_new(OBJECT(machine),
+                                       SPAPR_DR_CONNECTOR_TYPE_PHB, i);
+            qemu_register_reset(spapr_drc_reset, drc);
+        }
+    }
 
     /* Set up PCI */
     spapr_pci_rtas_init();
