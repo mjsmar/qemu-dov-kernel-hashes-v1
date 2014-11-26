@@ -56,6 +56,7 @@
 #include "qemu/error-report.h"
 #include "trace.h"
 #include "hw/nmi.h"
+#include "hw/ppc/spapr_drc.h"
 
 #include "hw/compat.h"
 
@@ -746,6 +747,7 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     size_t cb = 0;
     char *bootlist;
     void *fdt;
+    int fdt_offset;
     sPAPRPHBState *phb;
 
     fdt = g_malloc(FDT_MAX_SIZE);
@@ -803,6 +805,12 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
 
     if (!spapr->has_graphics) {
         spapr_populate_chosen_stdout(fdt, spapr->vio_bus);
+    }
+
+    fdt_offset = fdt_path_offset(fdt, "/");
+    ret = spapr_drc_populate_dt(fdt, fdt_offset, SPAPR_DR_CONNECTOR_TYPE_PHB);
+    if (ret < 0) {
+        fprintf(stderr, "Couldn't set up RTAS device tree properties\n");
     }
 
     _FDT((fdt_pack(fdt)));
