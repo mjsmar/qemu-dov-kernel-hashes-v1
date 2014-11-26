@@ -116,6 +116,7 @@ struct sPAPRMachineClass {
     /*< public >*/
     bool dr_lmb_enabled; /* enable dynamic-reconfig/hotplug of LMBs */
     bool dr_cpu_enabled; /* enable dynamic-reconfig/hotplug of CPUs */
+    bool dr_phb_enabled; /* enable dynamic-reconfig/hotplug of PHBs */
 };
 
 /**
@@ -1812,6 +1813,8 @@ static void ppc_spapr_init(MachineState *machine)
     /* We always have at least the nvram device on VIO */
     spapr_create_nvram(spapr);
 
+    spapr->dr_phb_enabled = smc->dr_phb_enabled;
+
     /* Set up PCI */
     spapr_pci_rtas_init();
 
@@ -2492,6 +2495,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     hc->unplug = spapr_machine_device_unplug;
     smc->dr_lmb_enabled = false;
     smc->dr_cpu_enabled = false;
+    smc->dr_phb_enabled = false;
 
     fwc->get_dev_path = spapr_get_fw_dev_path;
     nc->nmi_monitor_handler = spapr_nmi;
@@ -2606,6 +2610,7 @@ static void spapr_machine_2_4_class_init(ObjectClass *oc, void *data)
     mc->is_default = 1;
     smc->dr_lmb_enabled = true;
     smc->dr_cpu_enabled = true;
+    smc->dr_phb_enabled = true;
 }
 
 static const TypeInfo spapr_machine_2_4_info = {
