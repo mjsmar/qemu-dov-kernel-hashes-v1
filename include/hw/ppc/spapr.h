@@ -36,6 +36,7 @@ struct sPAPRMachineClass {
 
     /*< public >*/
     bool dr_lmb_enabled; /* enable dynamic-reconfig/hotplug of LMBs */
+    bool dr_phb_enabled; /* enable dynamic-reconfig/hotplug of PHBs */
 };
 
 /**
