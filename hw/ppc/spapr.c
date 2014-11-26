@@ -1801,6 +1801,11 @@ static const TypeInfo spapr_machine_info = {
             .driver   = TYPE_SPAPR_PCI_HOST_BRIDGE,\
             .property = "mem_win_size",\
             .value    = "0x20000000",\
+        },\
+        {\
+            .driver   = "spapr-pci-host-bridge",\
+            .property = "dynamic-reconfiguration",\
+            .value    = "off",\
         }
 
 #define SPAPR_COMPAT_2_1 \
