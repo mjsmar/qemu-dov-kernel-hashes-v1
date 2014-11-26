@@ -11,6 +11,9 @@ struct sPAPRNVRAM;
 
 #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
 
+/* TODO: check if we should limit phb->index to 0-31 for hotplugability */
+#define SPAPR_DRC_MAX_PHB       32 /* maximum number of hotpluggable PHBs */
+
 typedef struct sPAPREnvironment {
     struct VIOsPAPRBus *vio_bus;
     QLIST_HEAD(, sPAPRPHBState) phbs;
