@@ -2277,6 +2277,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     mc->cpu_index_to_socket_id = spapr_cpu_index_to_socket_id;
 
     smc->dr_lmb_enabled = false;
+    smc->dr_phb_enabled = false;
     fwc->get_dev_path = spapr_get_fw_dev_path;
     nc->nmi_monitor_handler = spapr_nmi;
 }
@@ -2461,6 +2462,7 @@ static void spapr_machine_2_6_class_init(ObjectClass *oc, void *data)
     mc->alias = "pseries";
     mc->is_default = 1;
     smc->dr_lmb_enabled = true;
+    smc->dr_phb_enabled = true;
 }
 
 static const TypeInfo spapr_machine_2_6_info = {
