@@ -501,3 +501,228 @@ sPAPRDRConnector *spapr_dr_connector_by_id(sPAPRDRConnectorType type,
             (get_type_shift(type) << DRC_INDEX_TYPE_SHIFT) |
             (id & DRC_INDEX_ID_MASK));
 }
+
+/* internal helper to gather up DRC info specific to populating DRC
+ * topology information in the device tree.
+ */
+typedef struct DRConnectorDTInfo {
+    char drc_type[64];
+    char drc_name[64];
+    uint32_t drc_index;
+    uint32_t drc_power_domain;
+} DRConnectorDTInfo;
+
+/* generate a string the describes the DRC to encode into the the
+ * DT.
+ *
+ * as documented by PAPR+ v2.7, 13.5.2.6 and C.6.1
+ */
+static void spapr_drc_get_type_str(char *buf, sPAPRDRConnectorType type)
+{
+    switch (type) {
+    case SPAPR_DR_CONNECTOR_TYPE_CPU:
+        sprintf(buf, "CPU");
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_PHB:
+        sprintf(buf, "PHB");
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_VIO:
+        sprintf(buf, "SLOT");
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_PCI:
+        sprintf(buf, "28");
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_LMB:
+        sprintf(buf, "MEM");
+        break;
+    default:
+        g_assert(false);
+    }
+}
+
+/* generate a human-readable name for a DRC to encode into the DT
+ * description. this is mainly only used within a guest in place
+ * of the unique DRC index.
+ *
+ * in the case of VIO/PCI devices, it corresponds to a
+ * "location code" that maps a logical device/function (DRC index)
+ * to a physical (or virtual in the case of VIO) location in the
+ * system by chaining together the "location label" for each
+ * encapsulating component.
+ *
+ * since this is more to do with diagnosing physical hardware
+ * issues than guest compatibility, we choose location codes/DRC
+ * names that adhere to the documented format, but avoid encoding
+ * the entire topology information into the label/code, instead
+ * just using the location codes based on the labels for the
+ * endpoints (VIO/PCI adaptor connectors), which is basically
+ * just "C" followed by an integer ID.
+ *
+ * DRC names as documented by PAPR+ v2.7, 13.5.2.4
+ * location codes as documented by PAPR+ v2.7, 12.3.1.5
+ */
+static void spapr_drc_get_name_str(char *buf,
+                                   sPAPRDRConnectorType type,
+                                   uint32_t drc_index)
+{
+    uint32_t id = drc_index & DRC_INDEX_ID_MASK;
+
+    switch (type) {
+    case SPAPR_DR_CONNECTOR_TYPE_CPU:
+        sprintf(buf, "CPU %d", id);
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_PHB:
+        sprintf(buf, "PHB %d", id);
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_VIO:
+    case SPAPR_DR_CONNECTOR_TYPE_PCI:
+        sprintf(buf, "C%d", id);
+        break;
+    case SPAPR_DR_CONNECTOR_TYPE_LMB:
+        sprintf(buf, "LMB %d", id);
+        break;
+    default:
+        g_assert(false);
+    }
+}
+
+static DRConnectorDTInfo *spapr_dr_connector_get_info(uint32_t drc_type_mask,
+                                                      unsigned int *count)
+{
+    Object *root_container;
+    ObjectProperty *prop;
+    GArray *drc_info_list = g_array_new(false, true,
+                                        sizeof(DRConnectorDTInfo));
+
+    /* aliases for all DRConnector objects will be rooted in QOM
+     * composition tree at /dr-connector
+     */
+    root_container = container_get(object_get_root(), "/dr-connector");
+
+    QTAILQ_FOREACH(prop, &root_container->properties, node) {
+        Object *obj;
+        sPAPRDRConnector *drc;
+        sPAPRDRConnectorClass *drck;
+        DRConnectorDTInfo drc_info;
+
+        if (!strstart(prop->type, "link<", NULL)) {
+            continue;
+        }
+
+        obj = object_property_get_link(root_container, prop->name, NULL);
+        drc = SPAPR_DR_CONNECTOR(obj);
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+
+        if ((drc->type & drc_type_mask) == 0) {
+            continue;
+        }
+
+        drc_info.drc_index = drck->get_index(drc);
+        drc_info.drc_power_domain = -1;
+        spapr_drc_get_type_str(drc_info.drc_type, drc->type);
+        spapr_drc_get_name_str(drc_info.drc_name, drc->type,
+                               drck->get_index(drc));
+        g_array_append_val(drc_info_list, drc_info);
+    }
+
+    if (count) {
+        *count = drc_info_list->len;
+    }
+
+    /* if count is zero, free everything, including internal storage
+     * for array
+     */
+    return (DRConnectorDTInfo *)g_array_free(drc_info_list, count == 0);
+}
+
+/**
+ * spapr_drc_populate_dt
+ *
+ * @fdt: libfdt device tree
+ * @path: path in the DT to generate properties
+ * @drc_type_mask: mask of sPAPRDRConnectorType values corresponding
+ *   to the types of DRCs to generate entries for
+ *
+ * generate OF properties to describe DRC topology/indices to guests
+ *
+ * as documented in PAPR+ v2.1, 13.5.2
+ */
+int spapr_drc_populate_dt(void *fdt, int fdt_offset, uint32_t drc_type_mask)
+{
+    DRConnectorDTInfo *drc_info_list;
+    unsigned int i, count;
+    char *char_buf;
+    uint32_t *char_buf_count;
+    uint32_t *int_buf;
+    int char_buf_offset, ret;
+
+    drc_info_list =
+        spapr_dr_connector_get_info(drc_type_mask, &count);
+
+    if (!count) {
+        return 0;
+    }
+
+    int_buf = g_new0(uint32_t, count + 1);
+    int_buf[0] = cpu_to_be32(count);
+    char_buf = g_new0(char, count * 128 + sizeof(uint32_t));
+    char_buf_count = (uint32_t *)&char_buf[0];
+    *char_buf_count = cpu_to_be32(count);
+
+    /* ibm,drc-indexes */
+    for (i = 0; i < count; i++) {
+        int_buf[i + 1] = cpu_to_be32(drc_info_list[i].drc_index);
+    }
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-indexes", int_buf,
+                      (count + 1) * sizeof(uint32_t));
+    if (ret) {
+        fprintf(stderr, "Couldn't create ibm,drc-indexes property\n");
+        goto out;
+    }
+
+    /* ibm,drc-power-domains */
+    for (i = 0; i < count; i++) {
+        int_buf[i + 1] = cpu_to_be32(drc_info_list[i].drc_power_domain);
+    }
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-power-domains", int_buf,
+                      (count + 1) * sizeof(uint32_t));
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-power-domains property\n");
+        goto out;
+    }
+
+    /* ibm,drc-names */
+    char_buf_offset = sizeof(uint32_t);
+
+    for (i = 0; i < count; i++) {
+        strcpy(char_buf + char_buf_offset, drc_info_list[i].drc_name);
+        char_buf_offset += strlen(drc_info_list[i].drc_name) + 1;
+    }
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-names", char_buf,
+                      char_buf_offset);
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-names property\n");
+        goto out;
+    }
+
+    /* ibm,drc-types */
+    char_buf_offset = sizeof(uint32_t);
+
+    for (i = 0; i < count; i++) {
+        strcpy(char_buf + char_buf_offset, drc_info_list[i].drc_type);
+        char_buf_offset += strlen(drc_info_list[i].drc_type) + 1;
+    }
+
+    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-types", char_buf,
+                      char_buf_offset);
+    if (ret) {
+        fprintf(stderr, "Couldn't finalize ibm,drc-types property\n");
+        goto out;
+    }
+
+out:
+    g_free(int_buf);
+    g_free(char_buf);
+    g_free(drc_info_list);
+    return ret;
+}
