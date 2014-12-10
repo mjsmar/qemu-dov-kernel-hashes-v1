@@ -1140,6 +1140,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     uint32_t interrupt_map_mask[] = {
         cpu_to_be32(b_ddddd(-1)|b_fff(0)), 0x0, 0x0, cpu_to_be32(-1)};
     uint32_t interrupt_map[PCI_SLOT_MAX * PCI_NUM_PINS][7];
+    sPAPRDRConnector *drc;
 
     /* Start populating the FDT */
     sprintf(nodename, "pci@%" PRIx64, phb->buid);
@@ -1187,6 +1188,14 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     object_child_foreach(OBJECT(phb), spapr_phb_children_dt,
                          &((sPAPRTCEDT){ .fdt = fdt, .node_off = bus_off }));
 
+    drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PHB, phb->index);
+    if (drc) {
+        sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        uint32_t drc_index = drck->get_index(drc);
+
+        _FDT(fdt_setprop(fdt, bus_off, "ibm,my-drc-index", &drc_index,
+                         sizeof(drc_index)));
+    }
     ret = spapr_drc_populate_dt(fdt, bus_off, SPAPR_DR_CONNECTOR_TYPE_PCI);
     if (ret) {
         return ret;
