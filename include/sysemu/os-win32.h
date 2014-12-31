@@ -81,7 +81,9 @@ struct tm *gmtime_r(const time_t *timep, struct tm *result);
 #undef localtime_r
 struct tm *localtime_r(const time_t *timep, struct tm *result);
 
+#if defined __MINGW32__ && !(__GNUC__ >= 4 && __GNUC_MINOR__ >= 9)
 char *strtok_r(char *str, const char *delim, char **saveptr);
+#endif
 
 static inline void os_setup_signal_handling(void) {}
 static inline void os_daemonize(void) {}
