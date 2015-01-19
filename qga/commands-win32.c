@@ -21,6 +21,7 @@
 #include "qga-qmp-commands.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/queue.h"
+#include "qga/guest-file-command-state.h"
 
 #ifndef SHTDN_REASON_FLAG_PLANNED
 #define SHTDN_REASON_FLAG_PLANNED 0x80000000
@@ -33,17 +34,6 @@
                         (1970 - 1601) / 4 - 3))
 
 #define INVALID_SET_FILE_POINTER ((DWORD)-1)
-
-typedef struct GuestFileHandle {
-    int64_t id;
-    HANDLE fh;
-    QTAILQ_ENTRY(GuestFileHandle) next;
-} GuestFileHandle;
-
-static struct {
-    QTAILQ_HEAD(, GuestFileHandle) filehandles;
-} guest_file_state;
-
 
 typedef struct OpenFlags {
     const char *forms;
@@ -81,35 +71,6 @@ static OpenFlags *find_open_flag(const char *mode_str)
     }
 
     error_setg(errp, "invalid file open mode '%s'", mode_str);
-    return NULL;
-}
-
-static int64_t guest_file_handle_add(HANDLE fh, Error **errp)
-{
-    GuestFileHandle *gfh;
-    int64_t handle;
-
-    handle = ga_get_fd_handle(ga_state, errp);
-    if (handle < 0) {
-        return -1;
-    }
-    gfh = g_malloc0(sizeof(GuestFileHandle));
-    gfh->id = handle;
-    gfh->fh = fh;
-    QTAILQ_INSERT_TAIL(&guest_file_state.filehandles, gfh, next);
-
-    return handle;
-}
-
-static GuestFileHandle *guest_file_handle_find(int64_t id, Error **errp)
-{
-    GuestFileHandle *gfh;
-    QTAILQ_FOREACH(gfh, &guest_file_state.filehandles, next) {
-        if (gfh->id == id) {
-            return gfh;
-        }
-    }
-    error_setg(errp, "handle '%" PRId64 "' has not been found", id);
     return NULL;
 }
 
@@ -157,19 +118,19 @@ int64_t qmp_guest_file_open(const char *path, bool has_mode,
 void qmp_guest_file_close(int64_t handle, Error **errp)
 {
     bool ret;
-    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
+    HANDLE fh = guest_file_handle_find(handle, errp);
+
     slog("guest-file-close called, handle: %" PRId64, handle);
-    if (gfh == NULL) {
+    if (!fh) {
         return;
     }
-    ret = CloseHandle(gfh->fh);
+    ret = CloseHandle(fh);
     if (!ret) {
         error_setg_errno(errp, GetLastError(), "failed close handle");
         return;
     }
 
-    QTAILQ_REMOVE(&guest_file_state.filehandles, gfh, next);
-    g_free(gfh);
+    guest_file_handle_remove(handle);
 }
 
 static void acquire_privilege(const char *name, Error **errp)
@@ -261,12 +222,11 @@ GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
 {
     GuestFileRead *read_data = NULL;
     guchar *buf;
-    HANDLE fh;
     bool is_ok;
     DWORD read_count;
-    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
+    HANDLE fh = guest_file_handle_find(handle, NULL);
 
-    if (!gfh) {
+    if (!fh) {
         return NULL;
     }
     if (!has_count) {
@@ -277,7 +237,6 @@ GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
         return NULL;
     }
 
-    fh = gfh->fh;
     buf = g_malloc0(count+1);
     is_ok = ReadFile(fh, buf, count, &read_count, NULL);
     if (!is_ok) {
@@ -307,13 +266,11 @@ GuestFileWrite *qmp_guest_file_write(int64_t handle, const char *buf_b64,
     gsize buf_len;
     bool is_ok;
     DWORD write_count;
-    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
-    HANDLE fh;
+    HANDLE fh = guest_file_handle_find(handle, errp);
 
-    if (!gfh) {
+    if (!fh) {
         return NULL;
     }
-    fh = gfh->fh;
     buf = g_base64_decode(buf_b64, &buf_len);
 
     if (!has_count) {
@@ -341,18 +298,17 @@ done:
 GuestFileSeek *qmp_guest_file_seek(int64_t handle, int64_t offset,
                                    int64_t whence, Error **errp)
 {
-    GuestFileHandle *gfh;
-    GuestFileSeek *seek_data;
     HANDLE fh;
+    GuestFileSeek *seek_data;
     LARGE_INTEGER new_pos, off_pos;
     off_pos.QuadPart = offset;
     BOOL res;
-    gfh = guest_file_handle_find(handle, errp);
-    if (!gfh) {
+
+    fh = guest_file_handle_find(handle, errp);
+    if (!fh) {
         return NULL;
     }
 
-    fh = gfh->fh;
     res = SetFilePointerEx(fh, off_pos, &new_pos, whence);
     if (!res) {
         error_setg_errno(errp, GetLastError(), "failed to seek file");
@@ -365,21 +321,15 @@ GuestFileSeek *qmp_guest_file_seek(int64_t handle, int64_t offset,
 
 void qmp_guest_file_flush(int64_t handle, Error **errp)
 {
-    HANDLE fh;
-    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
-    if (!gfh) {
+    HANDLE fh = guest_file_handle_find(handle, errp);
+
+    if (!fh) {
         return;
     }
 
-    fh = gfh->fh;
     if (!FlushFileBuffers(fh)) {
         error_setg_errno(errp, GetLastError(), "failed to flush file");
     }
-}
-
-static void guest_file_init(void)
-{
-    QTAILQ_INIT(&guest_file_state.filehandles);
 }
 
 GuestFilesystemInfoList *qmp_guest_get_fsinfo(Error **errp)
