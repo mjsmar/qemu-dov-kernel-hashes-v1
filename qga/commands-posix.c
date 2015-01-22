@@ -2267,8 +2267,33 @@ err:
 
 int64_t qmp_guest_get_memory_block_size(Error **errp)
 {
-    error_set(errp, QERR_UNSUPPORTED);
-    return -1;
+    Error *local_err = NULL;
+    char *dirpath;
+    int dirfd;
+    char *buf;
+    int64_t block_size;
+
+    dirpath = g_strdup_printf("/sys/devices/system/memory/");
+    dirfd = open(dirpath, O_RDONLY | O_DIRECTORY);
+    if (dirfd == -1) {
+        error_setg_errno(errp, errno, "open(\"%s\")", dirpath);
+        g_free(dirpath);
+        return -1;
+    }
+    g_free(dirpath);
+
+    buf = g_malloc0(20);
+    ga_read_sysfs_file(dirfd, "block_size_bytes", buf, 20, &local_err);
+    if (local_err) {
+        g_free(buf);
+        error_propagate(errp, local_err);
+        return -1;
+    }
+
+    block_size = strtol(buf, NULL, 16); /* the unit is bytes */
+    g_free(buf);
+
+    return block_size;
 }
 
 #else /* defined(__linux__) */
