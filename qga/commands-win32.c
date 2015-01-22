@@ -684,6 +684,25 @@ void qmp_guest_set_user_password(const char *username,
     error_set(errp, QERR_UNSUPPORTED);
 }
 
+GuestMemoryBlockList *qmp_guest_get_memory_blocks(Error **errp)
+{
+    error_set(errp, QERR_UNSUPPORTED);
+    return NULL;
+}
+
+GuestMemoryBlockResponseList *
+qmp_guest_set_memory_blocks(GuestMemoryBlockList *mem_blks, Error **errp)
+{
+    error_set(errp, QERR_UNSUPPORTED);
+    return NULL;
+}
+
+int64_t qmp_guest_get_memory_block_size(Error **errp)
+{
+    error_set(errp, QERR_UNSUPPORTED);
+    return -1;
+}
+
 /* add unsupported commands to the blacklist */
 GList *ga_command_blacklist_init(GList *blacklist)
 {
