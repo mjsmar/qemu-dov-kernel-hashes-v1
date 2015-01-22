@@ -74,6 +74,41 @@ static OpenFlags *find_open_flag(const char *mode_str)
     return NULL;
 }
 
+int64_t guest_file_handle_add_fd(int fd, const char *mode_str, Error **errp)
+{
+    HANDLE fh;
+    OpenFlags *guest_flags;
+    HANDLE templ_file = NULL;
+    DWORD share_mode = FILE_SHARE_READ;
+    DWORD flags_and_attr = FILE_ATTRIBUTE_NORMAL;
+    LPSECURITY_ATTRIBUTES sa_attr = NULL;
+    int64_t id;
+
+    guest_flags = find_open_flag(mode_str);
+    if (guest_flags == NULL) {
+        error_setg(errp, "invalid file open mode");
+        return -1;
+    }
+
+    fh = CreateFile(path, guest_flags->desired_access, share_mode, sa_attr,
+                    guest_flags->creation_disposition, flags_and_attr,
+                    templ_file);
+    if (fh == INVALID_HANDLE_VALUE) {
+        error_setg_errno(errp, GetLastError(), "failed to open file '%s'",
+                         path);
+        return -1;
+    }
+
+    id = guest_file_handle_add(fh, errp);
+    if (id < 0) {
+        CloseHandle(&fh);
+        error_setg(errp, "failed to add handle to qmp handle table");
+        return -1;
+    }
+
+    return id;
+}
+
 int64_t qmp_guest_file_open(const char *path, bool has_mode,
                             const char *mode, Error **errp)
 {
@@ -99,6 +134,7 @@ int64_t qmp_guest_file_open(const char *path, bool has_mode,
                     guest_flags->creation_disposition, flags_and_attr,
                     templ_file);
     if (fh == INVALID_HANDLE_VALUE) {
+        g_debug("MARKER 1");
         error_setg_errno(errp, GetLastError(), "failed to open file '%s'",
                          path);
         return -1;

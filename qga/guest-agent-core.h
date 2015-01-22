@@ -14,6 +14,7 @@
 #include "qemu-common.h"
 
 #define QGA_READ_COUNT_DEFAULT 4096
+#define QGA_EXEC_BUFFER_MAX (1 << 20)
 
 typedef struct GAState GAState;
 typedef struct GACommandState GACommandState;
@@ -21,6 +22,7 @@ extern GAState *ga_state;
 
 GList *ga_command_blacklist_init(GList *blacklist);
 void ga_command_state_init(GAState *s, GACommandState *cs);
+void ga_command_state_init_common(GAState *s, GACommandState *cs);
 void ga_command_state_add(GACommandState *cs,
                           void (*init)(void),
                           void (*cleanup)(void));

@@ -738,3 +738,145 @@
 ##
 { 'command': 'guest-get-fsinfo',
   'returns': ['GuestFilesystemInfo'] }
+
+##
+# @GuestExecStatus
+#
+# Status of a process launched by a qemu-ga command
+#
+# @handle: identifier for a process launched by qemu-ga
+#
+# @exited: whether or not a process has exited
+#
+# @exit-code: exit code for a process that has terminated
+#
+# Since: 1.5
+##
+{ 'type': 'GuestExecStatus',
+  'data': { 'handle': 'int', 'exited': 'bool', 'exit-code': 'int' } }
+
+##
+# @GuestExecResponse
+#
+# Response for a process executed by qemu-ga
+#
+# @status: process status
+#
+# @stdout-buffer: base64-encoded stdout from process
+#
+# @stderr-buffer: base64-encoded stderr from process
+#
+# Since: 1.5
+##
+{ 'type': 'GuestExecResponse',
+  'data': { 'status': 'GuestExecStatus',
+            '*stdout-buffer': 'str',
+            '*stderr-buffer': 'str' } }
+
+##
+# @GuestExecAsyncResponse
+#
+# Response for a process executed asynchronously by qemu-ga
+#
+# @status: process status
+#
+# @handle-stdin: handle corresponding to stdin in for a process
+#
+# @handle-stdout: handle corresponding to stdout in for a process
+#
+# @handle-stderr: handle corresponding to stderr in for a process
+#
+# Since: 1.5
+##
+{ 'type': 'GuestExecAsyncResponse',
+  'data': { 'status': 'GuestExecStatus',
+            '*handle-stdin': 'int', '*handle-stdout': 'int',
+            '*handle-stderr': 'int' } }
+
+##
+# @guest-exec-status
+#
+# Check status of process associated with PID retrieved via
+# guest-exec-async. Reap the process and associated metadata if it
+# has exited.
+#
+# @handle: handle returned from guest-exec-async
+#
+# @wait: #optional whether to wait for completion or simply poll once.
+#
+# @timeout: #optional if wait=true, the maximum amount of time to wait,
+#           in milliseconds
+#
+# Returns: GuestExecStatus on success
+#
+# Since: 1.5
+##
+{ 'command': 'guest-exec-status',
+  'data':    { 'handle': 'int', '*wait': 'bool', '*timeout': 'int' },
+  'returns': 'GuestExecStatus' }
+
+##
+# @guest-exec-close
+#
+# Clean up process metadata corresponding to 
+{ 'command': 'guest-exec-close',
+  'data':    { 'handle': 'int' } }
+
+##
+# @guest-exec:
+#
+# Execute a command in the guest
+#
+# If a pipe is associated with the resulting process, the
+# read/write/write sides of the process' stdin/stdout/stderr will
+# be transferred automatically, so no need to close them from the
+# client. If no handle is passed in for stdin/stdout/stderr, they
+# will be closed before executing the command.
+#
+# @path: path or executable name to execute
+# @params: #optional parameter list to pass to executable
+# @handle_stdin: #optional handle to associate with process' stdin.
+# @handle_stdout: #optional handle to associate with process' stdout
+# @handle_stderr: #optional handle to associate with process' stderr
+# @detach: #optional whether to detach the process or execute it
+# synchronously. If synchronous, passing of stdin/stdout/stderr handles
+# will be disallowed, since process can block on closing them and cause
+# a deadlock in the guest agent.
+#
+# Returns: GuestExecResponse on success.
+#
+# Since: 1.5
+##
+
+##
+# @guest-exec
+#
+# Execute a process in the guest, wait for it to exit, and return the
+# stdout/stderr output in a buffer.
+#
+# Note: any output stream exceeding 1M (before base64 encoding) will
+# cause an error to be returned. Any process exceeding the specified
+# time limit will also cause an error to be returned. For long-running
+# commands, or commands with large amounts of output, use
+# guest-exec-async instead.
+#
+# @cmdline: command line to execute in the guest (shell tokens are not
+#           supported unless you pass them as an argument to a bash
+#           process)
+#
+# @timeout: amount of time in milliseconds to wait for process
+#           (default is 10000)
+#
+# Since: 1.5
+##
+{ 'command': 'guest-exec',
+  'data':    { 'path': 'str', '*params': ['str'], '*timeout': 'int' },
+  'returns': 'GuestExecResponse' }
+
+##
+# @guest-exec-async
+# Since: 1.5
+##
+{ 'command': 'guest-exec-async',
+  'data':    { 'path': 'str', '*params': ['str'], '*interactive': 'bool' },
+  'returns': 'GuestExecAsyncResponse' }

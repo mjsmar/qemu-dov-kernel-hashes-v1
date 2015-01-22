@@ -262,7 +262,8 @@ find_open_flag(const char *mode_str, Error **errp)
                                S_IRGRP | S_IWGRP | \
                                S_IROTH | S_IWOTH)
 
-static FILE *
+//static FILE *
+static int
 safe_open_or_create(const char *path, const char *mode, Error **errp)
 {
     Error *local_err = NULL;
@@ -311,16 +312,7 @@ safe_open_or_create(const char *path, const char *mode, Error **errp)
                                  "0%03o on new file '%s' (mode: '%s')",
                                  (unsigned)DEFAULT_NEW_FILE_MODE, path, mode);
             } else {
-                FILE *f;
-
-                f = fdopen(fd, mode);
-                if (f == NULL) {
-                    error_setg_errno(&local_err, errno, "failed to associate "
-                                     "stdio stream with file descriptor %d, "
-                                     "file '%s' (mode: '%s')", fd, path, mode);
-                } else {
-                    return f;
-                }
+                return fd;
             }
 
             close(fd);
@@ -331,13 +323,42 @@ safe_open_or_create(const char *path, const char *mode, Error **errp)
     }
 
     error_propagate(errp, local_err);
-    return NULL;
+    return -1;
+}
+
+int64_t guest_file_handle_add_fd(int fd, const char *mode, Error **errp)
+{
+    FILE *f;
+    int64_t id;
+    int ret;
+
+    /* for guest-exec */
+    ret = fcntl(fd, F_GETFL);
+    ret = fcntl(fd, F_SETFL, ret | O_NONBLOCK);
+
+    f = fdopen(fd, mode);
+    if (f == NULL) {
+        error_setg_errno(errp, errno, "failed to associate "
+                         "stdio stream with file descriptor %d "
+                         "(mode: '%s')", fd, mode);
+        return -1;
+    }
+
+    /* can the parent do this? */
+    setvbuf(f, NULL, _IOLBF, 0);
+    id = guest_file_handle_add(f, errp);
+    if (id < 0) {
+        fclose(f);
+        return -1;
+    }
+
+    return id;
 }
 
 int64_t qmp_guest_file_open(const char *path, bool has_mode, const char *mode,
                             Error **errp)
 {
-    FILE *fh;
+    //FILE *fh;
     Error *local_err = NULL;
     int fd;
     int64_t ret = -1, handle;
@@ -346,7 +367,7 @@ int64_t qmp_guest_file_open(const char *path, bool has_mode, const char *mode,
         mode = "r";
     }
     slog("guest-file-open called, filepath: %s, mode: %s", path, mode);
-    fh = safe_open_or_create(path, mode, &local_err);
+    fd = safe_open_or_create(path, mode, &local_err);
     if (local_err != NULL) {
         error_propagate(errp, local_err);
         return -1;
@@ -355,19 +376,17 @@ int64_t qmp_guest_file_open(const char *path, bool has_mode, const char *mode,
     /* set fd non-blocking to avoid common use cases (like reading from a
      * named pipe) from hanging the agent
      */
-    fd = fileno(fh);
+    //fd = fileno(fh);
     ret = fcntl(fd, F_GETFL);
     ret = fcntl(fd, F_SETFL, ret | O_NONBLOCK);
     if (ret == -1) {
         error_setg_errno(errp, errno, "failed to make file '%s' non-blocking",
                          path);
-        fclose(fh);
         return -1;
     }
 
-    handle = guest_file_handle_add(fh, errp);
+    handle = guest_file_handle_add_fd(fd, mode, errp);
     if (handle < 0) {
-        fclose(fh);
         return -1;
     }
 
@@ -511,6 +530,7 @@ void qmp_guest_file_flush(int64_t handle, Error **errp)
     if (ret == EOF) {
         error_setg_errno(errp, errno, "failed to flush file");
     }
+    fsync(fileno(fh));
 }
 
 /* linux-specific implementations. avoid this if at all possible. */

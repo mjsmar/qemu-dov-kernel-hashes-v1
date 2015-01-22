@@ -233,6 +233,7 @@ static GIOStatus ga_channel_write(GAChannel *c, const char *buf, size_t size,
     BOOL ret;
     DWORD written;
 
+    g_debug("sending data, count: %d", (int)size);
     ov.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     ret = WriteFile(c->handle, buf, size, &written, &ov);
     if (!ret) {

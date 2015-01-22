@@ -534,6 +534,7 @@ static int send_response(GAState *s, QObject *payload)
 
     qstring_append_chr(response_qstr, '\n');
     buf = qstring_get_str(response_qstr);
+    g_debug("queued response, count %d, data: %s", (int)strlen(buf), buf);
     status = ga_channel_write_all(s->channel, buf, strlen(buf));
     QDECREF(response_qstr);
     if (status != G_IO_STATUS_NORMAL) {
@@ -1155,6 +1156,7 @@ int main(int argc, char **argv)
     }
     s->command_state = ga_command_state_new();
     ga_command_state_init(s, s->command_state);
+    ga_command_state_init_common(s, s->command_state);
     ga_command_state_init_all(s->command_state);
     json_message_parser_init(&s->parser, process_event);
     ga_state = s;

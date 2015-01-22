@@ -23,6 +23,7 @@ typedef FILE *GuestFileHandle;
 
 void guest_file_init(void);
 int64_t guest_file_handle_add(GuestFileHandle handle, Error **errp);
+int64_t guest_file_handle_add_fd(int fd, const char *mode, Error **errp);
 GuestFileHandle guest_file_handle_find(int64_t id, Error **err);
 void guest_file_handle_remove(int64_t id);
 
