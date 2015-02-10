@@ -181,6 +181,20 @@ static void pci_vga_qext_write(void *ptr, hwaddr addr,
     }
 }
 
+static bool vga_get_big_endian_fb(Object *obj, Error **errp)
+{
+    PCIVGAState *d = DO_UPCAST(PCIVGAState, dev, PCI_DEVICE(obj));
+
+    return d->vga.big_endian_fb;
+}
+
+static void vga_set_big_endian_fb(Object *obj, bool value, Error **errp)
+{
+    PCIVGAState *d = DO_UPCAST(PCIVGAState, dev, PCI_DEVICE(obj));
+
+    d->vga.big_endian_fb = value;
+}
+
 static const MemoryRegionOps pci_vga_qext_ops = {
     .read = pci_vga_qext_read,
     .write = pci_vga_qext_write,
@@ -233,6 +247,10 @@ static int pci_std_vga_initfn(PCIDevice *dev)
         vga_init_vbe(s, OBJECT(dev), pci_address_space(dev));
     }
 
+    /* Expose framebuffer byteorder via QOM */
+    object_property_add_bool(OBJECT(dev), "big-endian-framebuffer",
+                             vga_get_big_endian_fb, vga_set_big_endian_fb, NULL);
+
     return 0;
 }
 
@@ -267,6 +285,10 @@ static int pci_secondary_vga_initfn(PCIDevice *dev)
 
     pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_MEM_PREFETCH, &s->vram);
     pci_register_bar(&d->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+
+    /* Expose framebuffer byteorder via QOM */
+    object_property_add_bool(OBJECT(dev), "big-endian-framebuffer",
+                             vga_get_big_endian_fb, vga_set_big_endian_fb, NULL);
 
     return 0;
 }
