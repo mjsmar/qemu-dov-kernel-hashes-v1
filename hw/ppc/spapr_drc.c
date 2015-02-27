@@ -103,8 +103,19 @@ static int set_indicator_state(sPAPRDRConnector *drc,
 static int set_allocation_state(sPAPRDRConnector *drc,
                                 sPAPRDRAllocationState state)
 {
+    sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+
     DPRINTFN("drc: %x, set_allocation_state: %x", get_index(drc), state);
-    drc->allocation_state = state;
+
+    if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI) {
+        drc->allocation_state = state;
+        if (drc->awaiting_release &&
+            drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
+            DPRINTFN("finalizing device removal");
+            drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
+                         drc->detach_cb_opaque, NULL);
+        }
+    }
     return 0;
 }
 
@@ -308,7 +319,9 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
         error_setg(errp, "an attached device is still awaiting release");
         return;
     }
-    g_assert(drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_UNUSABLE);
+    if (drc->type == SPAPR_DR_CONNECTOR_TYPE_PCI) {
+        g_assert(drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_USABLE);
+    }
     g_assert(fdt || coldplug);
 
     /* NOTE: setting initial isolation state to UNISOLATED means we can't
@@ -318,8 +331,9 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
      * may be accessing the device, we can easily crash the guest, so we
      * we defer completion of removal in such cases to the reset() hook.
      */
-    drc->isolation_state = SPAPR_DR_ISOLATION_STATE_UNISOLATED;
-    drc->allocation_state = SPAPR_DR_ALLOCATION_STATE_USABLE;
+    if (drc->type == SPAPR_DR_CONNECTOR_TYPE_PCI) {
+        drc->isolation_state = SPAPR_DR_ISOLATION_STATE_UNISOLATED;
+    }
     drc->indicator_state = SPAPR_DR_INDICATOR_STATE_ACTIVE;
 
     drc->dev = d;
@@ -349,7 +363,13 @@ static void detach(sPAPRDRConnector *drc, DeviceState *d,
         return;
     }
 
-    drc->allocation_state = SPAPR_DR_ALLOCATION_STATE_UNUSABLE;
+    if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI &&
+        drc->allocation_state != SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
+        DPRINTFN("awaiting transition to unusable state before removal");
+        drc->awaiting_release = true;
+        return;
+    }
+
     drc->indicator_state = SPAPR_DR_INDICATOR_STATE_INACTIVE;
 
     if (drc->detach_cb) {
@@ -393,6 +413,12 @@ static void reset(DeviceState *d)
         if (drc->awaiting_release) {
             drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                          drc->detach_cb_opaque, NULL);
+        }
+
+        /* non-PCI devices may be awaiting a transition to UNUSABLE */
+        if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI &&
+            drc->awaiting_release) {
+            drck->set_allocation_state(drc, SPAPR_DR_ALLOCATION_STATE_UNUSABLE);
         }
     }
 }
@@ -499,6 +525,11 @@ sPAPRDRConnector *spapr_dr_connector_new(Object *owner,
         break;
     default:
         g_assert(false);
+    }
+
+    /* PCI slot always start in a USABLE state, and stay there */
+    if (drc->type == SPAPR_DR_CONNECTOR_TYPE_PCI) {
+        drc->allocation_state = SPAPR_DR_ALLOCATION_STATE_USABLE;
     }
 
     return drc;
