@@ -130,10 +130,8 @@ typedef enum {
 
 typedef struct sPAPRDRCCState {
     void *fdt;
-    int fdt_start_offset;
     int fdt_offset;
     int fdt_depth;
-    bool configured;
 } sPAPRDRCCState;
 
 typedef void (spapr_drc_detach_cb)(DeviceState *d, void *opaque);
@@ -154,6 +152,8 @@ typedef struct sPAPRDRConnector {
 
     /* configure-connector state */
     sPAPRDRCCState ccs;
+    int fdt_start_offset;
+    bool configured;
 
     bool awaiting_release;
 

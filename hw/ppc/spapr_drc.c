@@ -77,16 +77,16 @@ static int set_isolation_state(sPAPRDRConnector *drc,
          * configured state, as suggested by the state diagram from
          * PAPR+ 2.7, 13.4
          */
-        if (drc->awaiting_release && drc->ccs.configured) {
+        if (drc->awaiting_release && drc->configured) {
             DPRINTFN("finalizing device removal");
             drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                          drc->detach_cb_opaque, NULL);
-        } else if (!drc->ccs.configured) {
+        } else if (!drc->configured) {
             DPRINTFN("deferring device removal on unconfigured device\n");
         }
-        drc->ccs.fdt_offset = drc->ccs.fdt_start_offset;
+        drc->ccs.fdt_offset = drc->fdt_start_offset;
         drc->ccs.fdt_depth = 0;
-        drc->ccs.configured = false;
+        drc->configured = false;
     }
 
     return 0;
@@ -199,7 +199,6 @@ static sPAPRDRCCResponse configure_connector_common(sPAPRDRCCState *ccs,
             ccs->fdt_depth--;
             if (ccs->fdt_depth == 0) {
                 resp = SPAPR_DR_CC_RESPONSE_SUCCESS;
-                ccs->configured = true;
             } else {
                 resp = SPAPR_DR_CC_RESPONSE_PREV_PARENT;
             }
@@ -269,45 +268,53 @@ static void prop_get_fdt(Object *obj, Visitor *v, void *opaque,
                         const char *name, Error **errp)
 {
     sPAPRDRConnector *drc = SPAPR_DR_CONNECTOR(obj);
-    sPAPRDRCCState ccs = { 0 };
-    sPAPRDRCCResponse resp;
+    int fdt_offset_next, fdt_offset, fdt_depth;
+    void *fdt;
 
-    ccs.fdt = drc->ccs.fdt;
-    ccs.fdt_offset = ccs.fdt_start_offset = drc->ccs.fdt_start_offset;
+    if (!drc->ccs.fdt) {
+        return;
+    }
+
+    fdt = drc->ccs.fdt;
+    fdt_offset = drc->fdt_start_offset;
+    fdt_depth = 0;
 
     do {
-        char *name = NULL;
+        const char *name = NULL;
         const struct fdt_property *prop = NULL;
-        int prop_len;
+        int prop_len = 0, name_len = 0;
+        uint32_t tag;
 
-        resp = configure_connector_common(&ccs, &name, &prop, &prop_len);
-
-        switch (resp) {
-        case SPAPR_DR_CC_RESPONSE_NEXT_CHILD:
+        tag = fdt_next_tag(fdt, fdt_offset, &fdt_offset_next);
+        switch (tag) {
+        case FDT_BEGIN_NODE:
+            fdt_depth++;
+            name = fdt_get_name(fdt, fdt_offset, &name_len);
             visit_start_struct(v, NULL, NULL, name, 0, NULL);
             break;
-        case SPAPR_DR_CC_RESPONSE_PREV_PARENT:
+        case FDT_END_NODE:
+            /* shouldn't ever see an FDT_END_NODE before FDT_BEGIN_NODE */
+            g_assert(fdt_depth > 0);
             visit_end_struct(v, NULL);
+            fdt_depth--;
             break;
-        case SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY: {
+        case FDT_PROP: {
             int i;
+            prop = fdt_get_property_by_offset(fdt, fdt_offset, &prop_len);
+            name = fdt_string(fdt, fdt32_to_cpu(prop->nameoff));
             visit_start_list(v, name, NULL);
             for (i = 0; i < prop_len; i++) {
                 visit_type_uint8(v, (uint8_t *)&prop->data[i], NULL, NULL);
+
             }
             visit_end_list(v, NULL);
             break;
         }
         default:
-            resp = SPAPR_DR_CC_RESPONSE_SUCCESS;
-            break;
+            error_setg(&error_abort, "device FDT in unexpected state: %d", tag);
         }
-
-        g_free(name);
-    } while (resp != SPAPR_DR_CC_RESPONSE_SUCCESS &&
-             resp != SPAPR_DR_CC_RESPONSE_ERROR);
-
-    g_assert(resp != SPAPR_DR_CC_RESPONSE_ERROR);
+        fdt_offset = fdt_offset_next;
+    } while (fdt_depth != 0);
 }
 
 static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
@@ -338,9 +345,9 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
 
     drc->dev = d;
     drc->ccs.fdt = fdt;
-    drc->ccs.fdt_offset = drc->ccs.fdt_start_offset = fdt_start_offset;
+    drc->ccs.fdt_offset = drc->fdt_start_offset = fdt_start_offset;
     drc->ccs.fdt_depth = 0;
-    drc->ccs.configured = false;
+    drc->configured = false;
 
     object_property_add_link(OBJECT(drc), "device",
                              object_get_typename(OBJECT(drc->dev)),
@@ -379,7 +386,7 @@ static void detach(sPAPRDRConnector *drc, DeviceState *d,
     drc->awaiting_release = false;
     g_free(drc->ccs.fdt);
     drc->ccs.fdt = NULL;
-    drc->ccs.fdt_offset = drc->ccs.fdt_start_offset = drc->ccs.fdt_depth = 0;
+    drc->ccs.fdt_offset = drc->fdt_start_offset = drc->ccs.fdt_depth = 0;
     object_property_del(OBJECT(drc), "device", NULL);
     drc->dev = NULL;
     drc->detach_cb = NULL;
