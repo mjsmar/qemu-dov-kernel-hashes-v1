@@ -128,13 +128,10 @@ typedef enum {
     SPAPR_DR_CC_RESPONSE_CONTINUE       = -2,
 } sPAPRDRCCResponse;
 
-typedef struct sPAPRDRCCState {
-    void *fdt;
-    int fdt_offset;
-    int fdt_depth;
-} sPAPRDRCCState;
-
 typedef void (spapr_drc_detach_cb)(DeviceState *d, void *opaque);
+typedef void (spapr_drc_init_ccs_cb)(void *opaque, void *fdt,
+                                     int fdt_start_offset);
+typedef void (spapr_drc_reset_ccs_cb)(void *opaque);
 
 typedef struct sPAPRDRConnector {
     /*< private >*/
@@ -151,7 +148,10 @@ typedef struct sPAPRDRConnector {
     uint32_t indicator_state;
 
     /* configure-connector state */
-    sPAPRDRCCState ccs;
+    void *ccs;
+    spapr_drc_reset_ccs_cb *reset_ccs;
+
+    void *fdt;
     int fdt_start_offset;
     bool configured;
 
@@ -185,6 +185,14 @@ typedef struct sPAPRDRConnectorClass {
                                              char **prop_name,
                                              const struct fdt_property **prop,
                                              int *prop_len);
+
+    /* QEMU interfaces for managing FDT/configure-connector */
+    void *(*get_configure_connector_state)(sPAPRDRConnector *drc);
+    bool (*begin_configure_connector)(sPAPRDRConnector *drc,
+                                      spapr_drc_init_ccs_cb init_ccs,
+                                      spapr_drc_reset_ccs_cb reset_ccs,
+                                      void *opaque);
+    void (*complete_configure_connector)(sPAPRDRConnector *drc);
 
     /* QEMU interfaces for managing hotplug operations */
     void (*attach)(sPAPRDRConnector *drc, DeviceState *d, void *fdt,

@@ -34,6 +34,15 @@
 #define DRC_INDEX_TYPE_SHIFT 28
 #define DRC_INDEX_ID_MASK (~(~0 << DRC_INDEX_TYPE_SHIFT))
 
+static void reset_configure_connector(sPAPRDRConnector *drc)
+{
+    if (drc->reset_ccs) {
+        drc->reset_ccs(drc->ccs);
+    }
+    drc->ccs = NULL;
+    drc->reset_ccs = NULL;
+}
+
 static sPAPRDRConnectorTypeShift get_type_shift(sPAPRDRConnectorType type)
 {
     uint32_t shift = 0;
@@ -84,9 +93,8 @@ static int set_isolation_state(sPAPRDRConnector *drc,
         } else if (!drc->configured) {
             DPRINTFN("deferring device removal on unconfigured device\n");
         }
-        drc->ccs.fdt_offset = drc->fdt_start_offset;
-        drc->ccs.fdt_depth = 0;
         drc->configured = false;
+        reset_configure_connector(drc);
     }
 
     return 0;
@@ -127,6 +135,37 @@ static uint32_t get_type(sPAPRDRConnector *drc)
 static const char *get_name(sPAPRDRConnector *drc)
 {
     return drc->name;
+}
+
+static void *get_configure_connector_state(sPAPRDRConnector *drc)
+{
+    return drc->ccs;
+}
+
+static bool begin_configure_connector(sPAPRDRConnector *drc,
+                                      spapr_drc_init_ccs_cb init_ccs,
+                                      spapr_drc_reset_ccs_cb reset_ccs,
+                                      void *opaque)
+{
+    if (!drc->configured && drc->fdt) {
+        drc->reset_ccs = reset_ccs;
+        drc->ccs = opaque;
+        init_ccs(drc->ccs, drc->fdt, drc->fdt_start_offset);
+        return true;
+    }
+
+    /* we shouldn't be getting called when we've already been configured,
+     * or when an FDT hasn't been associated via attach(),
+     * so make sure the caller doesn't proceed
+     */
+    return false;
+}
+
+static void complete_configure_connector(sPAPRDRConnector *drc)
+{
+    g_assert(!drc->configured);
+    drc->configured = true;
+    reset_configure_connector(drc);
 }
 
 /*
@@ -271,11 +310,11 @@ static void prop_get_fdt(Object *obj, Visitor *v, void *opaque,
     int fdt_offset_next, fdt_offset, fdt_depth;
     void *fdt;
 
-    if (!drc->ccs.fdt) {
+    if (!drc->fdt) {
         return;
     }
 
-    fdt = drc->ccs.fdt;
+    fdt = drc->fdt;
     fdt_offset = drc->fdt_start_offset;
     fdt_depth = 0;
 
@@ -344,10 +383,10 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
     drc->indicator_state = SPAPR_DR_INDICATOR_STATE_ACTIVE;
 
     drc->dev = d;
-    drc->ccs.fdt = fdt;
-    drc->ccs.fdt_offset = drc->fdt_start_offset = fdt_start_offset;
-    drc->ccs.fdt_depth = 0;
+    drc->fdt = fdt;
+    drc->fdt_start_offset = fdt_start_offset;
     drc->configured = false;
+    reset_configure_connector(drc);
 
     object_property_add_link(OBJECT(drc), "device",
                              object_get_typename(OBJECT(drc->dev)),
@@ -384,9 +423,10 @@ static void detach(sPAPRDRConnector *drc, DeviceState *d,
     }
 
     drc->awaiting_release = false;
-    g_free(drc->ccs.fdt);
-    drc->ccs.fdt = NULL;
-    drc->ccs.fdt_offset = drc->fdt_start_offset = drc->ccs.fdt_depth = 0;
+    g_free(drc->fdt);
+    drc->fdt = NULL;
+    drc->fdt_start_offset = 0;
+    reset_configure_connector(drc);
     object_property_del(OBJECT(drc), "device", NULL);
     drc->dev = NULL;
     drc->detach_cb = NULL;
@@ -578,6 +618,9 @@ static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
     drck->get_index = get_index;
     drck->get_type = get_type;
     drck->get_name = get_name;
+    drck->get_configure_connector_state = get_configure_connector_state;
+    drck->begin_configure_connector = begin_configure_connector;
+    drck->complete_configure_connector = complete_configure_connector;
     drck->entity_sense = entity_sense;
     drck->configure_connector = configure_connector;
     drck->attach = attach;
