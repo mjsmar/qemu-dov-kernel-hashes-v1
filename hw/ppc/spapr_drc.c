@@ -206,69 +206,6 @@ static sPAPRDREntitySense entity_sense(sPAPRDRConnector *drc)
     return SPAPR_DR_ENTITY_SENSE_UNUSABLE;
 }
 
-static sPAPRDRCCResponse configure_connector_common(sPAPRDRCCState *ccs,
-                            char **name, const struct fdt_property **prop,
-                            int *prop_len)
-{
-    sPAPRDRCCResponse resp = SPAPR_DR_CC_RESPONSE_CONTINUE;
-    int fdt_offset_next;
-
-    *name = NULL;
-    *prop = NULL;
-    *prop_len = 0;
-
-    if (!ccs->fdt) {
-        return SPAPR_DR_CC_RESPONSE_ERROR;
-    }
-
-    while (resp == SPAPR_DR_CC_RESPONSE_CONTINUE) {
-        const char *name_cur;
-        uint32_t tag;
-        int name_cur_len;
-
-        tag = fdt_next_tag(ccs->fdt, ccs->fdt_offset, &fdt_offset_next);
-        switch (tag) {
-        case FDT_BEGIN_NODE:
-            ccs->fdt_depth++;
-            name_cur = fdt_get_name(ccs->fdt, ccs->fdt_offset, &name_cur_len);
-            *name = g_strndup(name_cur, name_cur_len);
-            resp = SPAPR_DR_CC_RESPONSE_NEXT_CHILD;
-            break;
-        case FDT_END_NODE:
-            ccs->fdt_depth--;
-            if (ccs->fdt_depth == 0) {
-                resp = SPAPR_DR_CC_RESPONSE_SUCCESS;
-            } else {
-                resp = SPAPR_DR_CC_RESPONSE_PREV_PARENT;
-            }
-            break;
-        case FDT_PROP:
-            *prop = fdt_get_property_by_offset(ccs->fdt, ccs->fdt_offset,
-                                               prop_len);
-            name_cur = fdt_string(ccs->fdt, fdt32_to_cpu((*prop)->nameoff));
-            *name = g_strdup(name_cur);
-            resp = SPAPR_DR_CC_RESPONSE_NEXT_PROPERTY;
-            break;
-        case FDT_END:
-            resp = SPAPR_DR_CC_RESPONSE_ERROR;
-            break;
-        default:
-            ccs->fdt_offset = fdt_offset_next;
-        }
-    }
-
-    ccs->fdt_offset = fdt_offset_next;
-    return resp;
-}
-
-static sPAPRDRCCResponse configure_connector(sPAPRDRConnector *drc,
-                                             char **name,
-                                             const struct fdt_property **prop,
-                                             int *prop_len)
-{
-    return configure_connector_common(&drc->ccs, name, prop, prop_len);
-}
-
 static void prop_get_index(Object *obj, Visitor *v, void *opaque,
                                   const char *name, Error **errp)
 {
@@ -622,7 +559,6 @@ static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
     drck->begin_configure_connector = begin_configure_connector;
     drck->complete_configure_connector = complete_configure_connector;
     drck->entity_sense = entity_sense;
-    drck->configure_connector = configure_connector;
     drck->attach = attach;
     drck->detach = detach;
     drck->release_pending = release_pending;

@@ -181,10 +181,6 @@ typedef struct sPAPRDRConnectorClass {
     const char *(*get_name)(sPAPRDRConnector *drc);
 
     sPAPRDREntitySense (*entity_sense)(sPAPRDRConnector *drc);
-    sPAPRDRCCResponse (*configure_connector)(sPAPRDRConnector *drc,
-                                             char **prop_name,
-                                             const struct fdt_property **prop,
-                                             int *prop_len);
 
     /* QEMU interfaces for managing FDT/configure-connector */
     void *(*get_configure_connector_state)(sPAPRDRConnector *drc);
