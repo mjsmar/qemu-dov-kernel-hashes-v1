@@ -708,10 +708,15 @@ static void *spapr_create_pci_child_dt(sPAPRPHBState *phb, PCIDevice *dev,
     void *fdt;
     int offset, ret, fdt_size;
     int slot = PCI_SLOT(dev->devfn);
+    int func = PCI_FUNC(dev->devfn);
     char nodename[512];
 
     fdt = create_device_tree(&fdt_size);
-    sprintf(nodename, "pci@%d", slot);
+    if (func != 0) {
+        sprintf(nodename, "pci@%d,%d", slot, func);
+    } else {
+        sprintf(nodename, "pci@%d", slot);
+    }
     offset = fdt_add_subnode(fdt, 0, nodename);
     ret = spapr_populate_pci_child_dt(dev, fdt, offset, phb->index, drc_index,
                                       drc_name);
@@ -991,10 +996,10 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
 
     /* allocate connectors for child PCI devices */
     if (sphb->dr_enabled) {
-        for (i = 0; i < PCI_SLOT_MAX; i++) {
+        for (i = 0; i < PCI_SLOT_MAX * 8; i++) {
             spapr_dr_connector_new(OBJECT(phb),
                                    SPAPR_DR_CONNECTOR_TYPE_PCI,
-                                   (sphb->index << 16) | (i << 3));
+                                   (sphb->index << 16) | i);
         }
     }
 
