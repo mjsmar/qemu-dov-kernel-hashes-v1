@@ -549,6 +549,8 @@ static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
             ccs->fdt_depth--;
             if (ccs->fdt_depth == 0) {
                 drck->complete_configure_connector(drc);
+                /* ccs should be free at this point */
+                ccs = NULL;
                 resp = SPAPR_DR_CC_RESPONSE_SUCCESS;
             } else {
                 resp = SPAPR_DR_CC_RESPONSE_PREV_PARENT;
@@ -583,7 +585,9 @@ static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
             /* keep seeking for an actionable tag */
             break;
         }
-        ccs->fdt_offset = fdt_offset_next;
+        if (ccs) {
+            ccs->fdt_offset = fdt_offset_next;
+        }
     } while (resp == SPAPR_DR_CC_RESPONSE_CONTINUE);
 
     rc = resp;
