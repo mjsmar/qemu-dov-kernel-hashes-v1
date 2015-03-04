@@ -91,7 +91,7 @@ static int set_isolation_state(sPAPRDRConnector *drc,
                 DPRINTFN("finalizing device removal");
                 drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                              drc->detach_cb_opaque, NULL);
-            } else (!drc->configured) {
+            } else {
                 DPRINTFN("deferring device removal on unconfigured device\n");
             }
         }
