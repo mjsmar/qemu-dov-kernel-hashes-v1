@@ -589,31 +589,24 @@ sPAPRDRConnector *spapr_dr_connector_by_id(sPAPRDRConnectorType type,
  *
  * as documented by PAPR+ v2.7, 13.5.2.6 and C.6.1
  */
-static char *spapr_drc_get_type_str(sPAPRDRConnectorType type)
+static const char *spapr_drc_get_type_str(sPAPRDRConnectorType type)
 {
-    char *type_str = NULL;
-
     switch (type) {
     case SPAPR_DR_CONNECTOR_TYPE_CPU:
-        type_str = g_strdup_printf("CPU");
-        break;
+        return "CPU";
     case SPAPR_DR_CONNECTOR_TYPE_PHB:
-        type_str = g_strdup_printf("PHB");
-        break;
+        return "PHB";
     case SPAPR_DR_CONNECTOR_TYPE_VIO:
-        type_str = g_strdup_printf("SLOT");
-        break;
+        return "SLOT";
     case SPAPR_DR_CONNECTOR_TYPE_PCI:
-        type_str = g_strdup_printf("28");
-        break;
+        return "28";
     case SPAPR_DR_CONNECTOR_TYPE_LMB:
-        type_str = g_strdup_printf("MEM");
-        break;
+        return "MEM";
     default:
         g_assert(false);
     }
 
-    return type_str;
+    return NULL;
 }
 
 /**
@@ -662,7 +655,6 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
         Object *obj;
         sPAPRDRConnector *drc;
         sPAPRDRConnectorClass *drck;
-        char *drc_type;
         uint32_t drc_index, drc_power_domain;
 
         if (!strstart(prop->type, "link<", NULL)) {
@@ -696,10 +688,9 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
         drc_names = g_string_insert_len(drc_names, -1, "\0", 1);
 
         /* ibm,drc-types */
-        drc_type = spapr_drc_get_type_str(drc->type);
-        drc_types = g_string_append(drc_types, drc_type);
+        drc_types = g_string_append(drc_types,
+                                    spapr_drc_get_type_str(drc->type));
         drc_types = g_string_insert_len(drc_types, -1, "\0", 1);
-        g_free(drc_type);
     }
 
     /* now write the drc count into the space we reserved at the
