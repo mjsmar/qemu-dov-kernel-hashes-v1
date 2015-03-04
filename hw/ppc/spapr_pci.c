@@ -507,7 +507,7 @@ typedef struct ResourceFields {
     uint32_t phys_lo;
     uint32_t size_hi;
     uint32_t size_lo;
-} __attribute__ ((packed)) ResourceFields;
+} QEMU_PACKED ResourceFields;
 
 typedef struct ResourceProps {
     ResourceFields reg[8];
