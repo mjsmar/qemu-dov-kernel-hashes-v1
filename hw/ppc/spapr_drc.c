@@ -86,12 +86,14 @@ static int set_isolation_state(sPAPRDRConnector *drc,
          * configured state, as suggested by the state diagram from
          * PAPR+ 2.7, 13.4
          */
-        if (drc->awaiting_release && drc->configured) {
-            DPRINTFN("finalizing device removal");
-            drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
-                         drc->detach_cb_opaque, NULL);
-        } else if (!drc->configured) {
-            DPRINTFN("deferring device removal on unconfigured device\n");
+        if (drc->awaiting_release) {
+            if (drc->configured) {
+                DPRINTFN("finalizing device removal");
+                drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
+                             drc->detach_cb_opaque, NULL);
+            } else (!drc->configured) {
+                DPRINTFN("deferring device removal on unconfigured device\n");
+            }
         }
         drc->configured = false;
         reset_configure_connector(drc);
