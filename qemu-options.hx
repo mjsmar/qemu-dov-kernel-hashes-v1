@@ -84,11 +84,22 @@ HXCOMM Deprecated by -machine
 DEF("M", HAS_ARG, QEMU_OPTION_M, "", QEMU_ARCH_ALL)
 
 DEF("cpu", HAS_ARG, QEMU_OPTION_cpu,
-    "-cpu cpu        select CPU ('-cpu help' for list)\n", QEMU_ARCH_ALL)
+    "-cpu cpu        select CPU ('-cpu help' for list)\n", QEMU_ARCH_ALL & ~QEMU_ARCH_PPC)
+DEF("cpu", HAS_ARG, QEMU_OPTION_cpu_ppc,
+    "-cpu cpu[,compat=power6|power7|power8]\n"
+    "                select CPU ('-cpu help' for list)\n"
+    "                compat= processor compatibility mode\n", QEMU_ARCH_PPC)
 STEXI
-@item -cpu @var{model}
+@item -cpu @var{model}[,compat=@var{mode}]
 @findex -cpu
 Select CPU model (@code{-cpu help} for list and additional feature selection)
+@table @option
+@item compat=power6|power7|power8
+Enables POWER architecture compatibility mode.
+@samp{power6} enables PowerISA 2.05-compatibility mode,
+@samp{power7} - 2.06, @samp{power8} - 2.07. @samp{mode} is only supported by
+a PPC64-pseries machine.
+@end table
 ETEXI
 
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
