@@ -933,7 +933,7 @@ static void spapr_finalize_fdt(sPAPREnvironment *spapr,
     }
 
     QLIST_FOREACH(phb, &spapr->phbs, list) {
-        ret = spapr_populate_pci_dt(phb, PHANDLE_XICP, fdt);
+        ret = spapr_populate_pci_dt(phb, PHANDLE_XICP, fdt, NULL);
     }
 
     if (ret < 0) {
