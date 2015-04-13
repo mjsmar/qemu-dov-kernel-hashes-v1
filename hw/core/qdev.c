@@ -108,22 +108,21 @@ void qdev_set_parent_bus(DeviceState *dev, BusState *bus)
     bus_add_child(bus, dev);
 }
 
-static void qbus_set_hotplug_handler_internal(BusState *bus, Object *handler,
-                                              Error **errp)
+void qbus_set_hotplug_handler_generic(BusState *bus, Object *handler,
+                                      Error **errp)
 {
-
     object_property_set_link(OBJECT(bus), OBJECT(handler),
                              QDEV_HOTPLUG_HANDLER_PROPERTY, errp);
 }
 
 void qbus_set_hotplug_handler(BusState *bus, DeviceState *handler, Error **errp)
 {
-    qbus_set_hotplug_handler_internal(bus, OBJECT(handler), errp);
+    qbus_set_hotplug_handler_generic(bus, OBJECT(handler), errp);
 }
 
 void qbus_set_bus_hotplug_handler(BusState *bus, Error **errp)
 {
-    qbus_set_hotplug_handler_internal(bus, OBJECT(bus), errp);
+    qbus_set_hotplug_handler_generic(bus, OBJECT(bus), errp);
 }
 
 /* Create a new device.  This only initializes the device state structure
