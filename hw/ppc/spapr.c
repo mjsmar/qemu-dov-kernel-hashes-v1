@@ -67,6 +67,7 @@
 #include "qmp-commands.h"
 
 #include <libfdt.h>
+#include "sysemu/device_tree.h"
 
 /* SLOF memory layout:
  *
@@ -1963,6 +1964,11 @@ static void ppc_spapr_init(MachineState *machine)
     if (kvm_enabled() && kvmppc_spapr_use_multitce()) {
         kvmppc_spapr_enable_inkernel_multitce();
     }
+
+    if (spapr->dr_phb_enabled) {
+        qbus_set_hotplug_handler_generic(sysbus_get_default(), OBJECT(machine),
+                                         NULL);
+    }
 }
 
 static int spapr_kvm_type(const char *vm_type)
@@ -2432,6 +2438,86 @@ static void spapr_cpu_socket_unplug(HotplugHandler *hotplug_dev,
     object_child_foreach(OBJECT(dev), spapr_cpu_core_unplug, errp);
 }
 
+static void spapr_machine_phb_plug(HotplugHandler *hotplug_dev,
+                                   DeviceState *dev, Error **errp)
+{
+    sPAPRPHBState *sphb;
+    void *fdt = NULL;
+    int fdt_start_offset = 0;
+    int fdt_size = 0;
+    Error *local_err = NULL;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+
+    sphb = SPAPR_PCI_HOST_BRIDGE(dev);
+    drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PHB, sphb->index);
+    /* hotplug hooks should check it's enabled before getting this far */
+    g_assert(drc);
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+
+    /* boot-time devices get their device tree node created by SLOF, but for
+     * hotplugged devices we need QEMU to generate it so the guest can fetch
+     * it via RTAS
+     */
+    if (dev->hotplugged) {
+        int ret;
+        fdt = create_device_tree(&fdt_size);
+        ret = spapr_populate_pci_dt(sphb, PHANDLE_XICP, fdt, &fdt_start_offset);
+        if (ret < 0) {
+            error_setg(&local_err, "unable to create FDT for hotplugged PHB");
+            goto out;
+        }
+
+        /* generally SLOF creates these, for hotplug it's up to QEMU */
+        _FDT(fdt_setprop_string(fdt, fdt_start_offset, "name", "pci"));
+    }
+
+    /* boot-time devices still get associated with a DRC to allow for unplug,
+     * but since we use SLOF-generated DT here we don't need to re-generate it
+     */
+    drck->attach(drc, DEVICE(dev),
+                 fdt, fdt_start_offset, !dev->hotplugged, &local_err);
+out:
+    if (local_err) {
+        error_propagate(errp, local_err);
+        g_free(fdt);
+        return;
+    }
+
+    if (dev->hotplugged) {
+        spapr_hotplug_req_add_event(drc);
+    }
+}
+
+static void spapr_machine_phb_remove_cb(DeviceState *dev, void *opaque)
+{
+    object_unparent(OBJECT(dev));
+}
+
+static void spapr_machine_phb_unplug(HotplugHandler *hotplug_dev,
+                                            DeviceState *dev, Error **errp)
+{
+    sPAPRPHBState *sphb;
+    sPAPRDRConnector *drc;
+    sPAPRDRConnectorClass *drck;
+    Error *local_err = NULL;
+
+    sphb = SPAPR_PCI_HOST_BRIDGE(dev);
+    drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PHB, sphb->index);
+    g_assert(drc);
+    drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+
+    if (!drck->release_pending(drc)) {
+        drck->detach(drc, DEVICE(dev), spapr_machine_phb_remove_cb, NULL,
+                     &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return;
+        }
+        spapr_hotplug_req_remove_event(drc);
+    }
+}
+
 static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
@@ -2474,6 +2560,12 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
             return;
         }
         spapr_memory_plug(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_SPAPR_PCI_HOST_BRIDGE)) {
+        if (!spapr->dr_phb_enabled) {
+            error_setg(errp, "PHB hotplug not supported for this machine");
+            return;
+        }
+        spapr_machine_phb_plug(hotplug_dev, dev, errp);
     }
 }
 
@@ -2488,6 +2580,12 @@ static void spapr_machine_device_unplug(HotplugHandler *hotplug_dev,
         spapr_cpu_socket_unplug(hotplug_dev, dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         error_setg(errp, "Memory hot unplug not supported by sPAPR");
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_SPAPR_PCI_HOST_BRIDGE)) {
+        if (!spapr->dr_phb_enabled) {
+            error_setg(errp, "PHB unplug not supported for this machine");
+            return;
+        }
+        spapr_machine_phb_unplug(hotplug_dev, dev, errp);
     }
 }
 
