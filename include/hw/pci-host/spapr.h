@@ -131,7 +131,8 @@ PCIHostState *spapr_create_phb(sPAPRMachineState *spapr, int index);
 
 int spapr_populate_pci_dt(sPAPRPHBState *phb,
                           uint32_t xics_phandle,
-                          void *fdt);
+                          void *fdt,
+                          int *node_offset);
 
 void spapr_pci_msi_init(sPAPRMachineState *spapr, hwaddr addr);
 
