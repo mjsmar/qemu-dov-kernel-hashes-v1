@@ -436,6 +436,8 @@ static void spapr_hotplug_req_event(sPAPRDRConnector *drc, uint8_t hp_action)
         break;
     case SPAPR_DR_CONNECTOR_TYPE_LMB:
         hp->hotplug_type = RTAS_LOG_V6_HP_TYPE_MEMORY;
+    case SPAPR_DR_CONNECTOR_TYPE_PHB:
+        hp->hotplug_type = RTAS_LOG_V6_HP_TYPE_PHB;
         break;
     default:
         /* we shouldn't be signaling hotplug events for resources
