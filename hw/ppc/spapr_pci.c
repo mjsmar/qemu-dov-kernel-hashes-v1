@@ -1227,8 +1227,14 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         if ((sphb->buid != (uint64_t)-1) || (sphb->dma_liobn != (uint32_t)-1)
             || (sphb->mem_win_addr != (hwaddr)-1)
             || (sphb->io_win_addr != (hwaddr)-1)) {
-            error_setg(errp, "Either \"index\" or other parameters must"
-                       " be specified for PAPR PHB, not both");
+            if (!spapr->dr_phb_enabled) {
+                /* if they aren't potentially using index as an identifier for
+                 * the PHB's DR connector, enforce the old semantics of index
+                 * being purely a shorthand for PHB configuration options.
+                 */
+                error_setg(errp, "Either \"index\" or other parameters must"
+                           " be specified for PAPR PHB, not both");
+            }
             return;
         }
 
@@ -1245,6 +1251,14 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
             + sphb->index * SPAPR_PCI_WINDOW_SPACING;
         sphb->mem_win_addr = windows_base + SPAPR_PCI_MMIO_WIN_OFF;
         sphb->io_win_addr = windows_base + SPAPR_PCI_IO_WIN_OFF;
+    } else {
+        if (spapr->dr_phb_enabled) {
+            error_setg(errp, "The \"index\" property is required for machine"
+                       " types that support PHB hotplug (and in such cases"
+                       " can be used alongside \"buid\" and other"
+                       " configuration properties)");
+            return;
+        }
     }
 
     if (sphb->buid == (uint64_t)-1) {
