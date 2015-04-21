@@ -1211,6 +1211,69 @@ static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
     }
 }
 
+static int spapr_phb_unparent_child_devices(Object *child, void *opaque)
+{
+    DeviceState *dev = (DeviceState *) object_dynamic_cast(child, TYPE_DEVICE);
+
+    if (dev) {
+        object_unparent(child);
+    }
+
+    return 0;
+}
+
+static void spapr_phb_unrealize(DeviceState *dev, Error **errp)
+{
+    SysBusDevice *s = SYS_BUS_DEVICE(dev);
+    PCIHostState *phb = PCI_HOST_BRIDGE(s);
+    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(phb);
+    sPAPRTCETable *tcet;
+
+    pci_unregister_bus(phb->bus);
+
+    /* remove IO/MMIO subregions and aliases, rest should get cleaned
+     * via PHB's unrealize->object_finalize
+     */
+    memory_region_del_subregion(get_system_memory(), &sphb->iowindow);
+    memory_region_del_subregion(get_system_memory(), &sphb->memwindow);
+
+    memory_region_del_subregion(&sphb->iommu_root, &sphb->msiwindow);
+
+    tcet = spapr_tce_find_by_liobn(SPAPR_PCI_LIOBN(sphb->index, 0));
+    memory_region_del_subregion(&sphb->iommu_root, spapr_tce_get_iommu(tcet));
+
+    address_space_destroy(&sphb->iommu_as);
+
+    /* clean up child devices (spapr_drc, spapr_iommu, etc.).
+     * non-DeviceState's will be handled explicitly
+     */
+    object_child_foreach(OBJECT(dev), spapr_phb_unparent_child_devices, NULL);
+
+    /* MemoryRegion alias take a ref on the PHB, similar to
+     * subregions, so clean them up here to make sure we
+     * can finalize the PHB
+     */
+    object_unparent(OBJECT(&sphb->memwindow));
+    object_unparent(OBJECT(&sphb->iowindow));
+
+    QLIST_REMOVE(sphb, list);
+    g_free(sphb->dtbusname);
+    sphb->dtbusname = NULL;
+    g_hash_table_unref(sphb->msi);
+    sphb->msi = NULL;
+}
+
+static void spapr_phb_finalize(Object *dev)
+{
+    SysBusDevice *s = SYS_BUS_DEVICE(dev);
+    PCIHostState *phb = PCI_HOST_BRIDGE(s);
+    sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(phb);
+
+    /* should happen automatically, but we do it explicitly for clarity */
+    object_unparent(OBJECT(&sphb->iospace));
+    object_unparent(OBJECT(&sphb->memspace));
+}
+
 static void spapr_phb_realize(DeviceState *dev, Error **errp)
 {
     sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
@@ -1540,6 +1603,7 @@ static void spapr_phb_class_init(ObjectClass *klass, void *data)
 
     hc->root_bus_path = spapr_phb_root_bus_path;
     dc->realize = spapr_phb_realize;
+    dc->unrealize = spapr_phb_unrealize;
     dc->props = spapr_phb_properties;
     dc->reset = spapr_phb_reset;
     dc->vmsd = &vmstate_spapr_pci;
@@ -1554,6 +1618,7 @@ static const TypeInfo spapr_phb_info = {
     .name          = TYPE_SPAPR_PCI_HOST_BRIDGE,
     .parent        = TYPE_PCI_HOST_BRIDGE,
     .instance_size = sizeof(sPAPRPHBState),
+    .instance_finalize = spapr_phb_finalize,
     .class_init    = spapr_phb_class_init,
     .class_size    = sizeof(sPAPRPHBClass),
     .interfaces    = (InterfaceInfo[]) {
