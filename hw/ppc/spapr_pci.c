@@ -426,7 +426,7 @@ static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
     addr = rtas_ld(args, 0);
     option = rtas_ld(args, 3);
 
-    sphb = find_phb(spapr, buid);
+    sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb) {
         goto param_error_exit;
     }
@@ -461,7 +461,7 @@ static void rtas_ibm_get_config_addr_info2(PowerPCCPU *cpu,
     }
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
-    sphb = find_phb(spapr, buid);
+    sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb) {
         goto param_error_exit;
     }
@@ -479,7 +479,7 @@ static void rtas_ibm_get_config_addr_info2(PowerPCCPU *cpu,
     switch (option) {
     case RTAS_GET_PE_ADDR:
         addr = rtas_ld(args, 0);
-        pdev = find_dev(spapr, buid, addr);
+        pdev = spapr_pci_find_dev(spapr, buid, addr);
         if (!pdev) {
             goto param_error_exit;
         }
@@ -516,7 +516,7 @@ static void rtas_ibm_read_slot_reset_state2(PowerPCCPU *cpu,
     }
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
-    sphb = find_phb(spapr, buid);
+    sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb) {
         goto param_error_exit;
     }
@@ -562,7 +562,7 @@ static void rtas_ibm_set_slot_reset(PowerPCCPU *cpu,
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
     option = rtas_ld(args, 3);
-    sphb = find_phb(spapr, buid);
+    sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb) {
         goto param_error_exit;
     }
@@ -596,7 +596,7 @@ static void rtas_ibm_configure_pe(PowerPCCPU *cpu,
     }
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
-    sphb = find_phb(spapr, buid);
+    sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb) {
         goto param_error_exit;
     }
@@ -631,7 +631,7 @@ static void rtas_ibm_slot_error_detail(PowerPCCPU *cpu,
     }
 
     buid = ((uint64_t)rtas_ld(args, 1) << 32) | rtas_ld(args, 2);
-    sphb = find_phb(spapr, buid);
+    sphb = spapr_pci_find_phb(spapr, buid);
     if (!sphb) {
         goto param_error_exit;
     }
