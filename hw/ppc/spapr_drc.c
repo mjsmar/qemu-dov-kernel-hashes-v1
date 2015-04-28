@@ -466,6 +466,7 @@ sPAPRDRConnector *spapr_dr_connector_new(Object *owner,
     drc->id = id;
     drc->owner = owner;
     object_property_add_child(owner, "dr-connector[*]", OBJECT(drc), NULL);
+    object_unref(OBJECT(drc));
     object_property_set_bool(OBJECT(drc), true, "realized", NULL);
 
     /* human-readable name for a DRC to encode into the DT
