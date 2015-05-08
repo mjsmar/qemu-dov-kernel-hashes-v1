@@ -1130,7 +1130,7 @@ static sPAPRDRConnector *spapr_phb_get_pci_drc(sPAPRPHBState *phb,
 {
     uint32_t busnr = pci_bus_num(PCI_BUS(qdev_get_parent_bus(DEVICE(pdev))));
     return spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_PCI,
-                                    (phb->index << 16) |
+                                    (phb->drc_position << 16) |
                                     (busnr << 8) |
                                     pdev->devfn);
 }
@@ -1310,6 +1310,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
             + sphb->index * SPAPR_PCI_WINDOW_SPACING;
         sphb->mem_win_addr = windows_base + SPAPR_PCI_MMIO_WIN_OFF;
         sphb->io_win_addr = windows_base + SPAPR_PCI_IO_WIN_OFF;
+        sphb->drc_position = sphb->index;
     }
 
     if (sphb->buid == (uint64_t)-1) {
@@ -1329,6 +1330,17 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
 
     if (sphb->io_win_addr == (hwaddr)-1) {
         error_setg(errp, "IO window address not specified for PHB");
+        return;
+    }
+
+    if (sphb->drc_position == (uint32_t)-1) {
+        error_setg(errp, "DR Connector position not specified for PHB");
+        return;
+    }
+
+    if (sphb->drc_position > SPAPR_PCI_MAX_INDEX) {
+        error_setg(errp, "\"drc_position\" for PAPR PHB is too large (max %u)",
+                   SPAPR_PCI_MAX_INDEX);
         return;
     }
 
@@ -1430,7 +1442,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         for (i = 0; i < PCI_SLOT_MAX * 8; i++) {
             spapr_dr_connector_new(OBJECT(phb),
                                    SPAPR_DR_CONNECTOR_TYPE_PCI,
-                                   (sphb->index << 16) | i);
+                                   (sphb->drc_position << 16) | i);
         }
     }
 
@@ -1492,6 +1504,7 @@ static Property spapr_phb_properties[] = {
                        SPAPR_PCI_IO_WIN_SIZE),
     DEFINE_PROP_BOOL("dynamic-reconfiguration", sPAPRPHBState, dr_enabled,
                      true),
+    DEFINE_PROP_UINT32("drc_position", sPAPRPHBState, drc_position, -1),
     DEFINE_PROP_END_OF_LIST(),
 };
 

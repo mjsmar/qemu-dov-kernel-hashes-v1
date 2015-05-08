@@ -90,6 +90,8 @@ struct sPAPRPHBState {
     int32_t msi_devs_num;
     spapr_pci_msi_mig *msi_devs;
 
+    uint32_t drc_position; /* index of PHB DRC to 'plug' into */
+
     QLIST_ENTRY(sPAPRPHBState) list;
 };
 
