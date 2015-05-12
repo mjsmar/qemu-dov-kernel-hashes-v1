@@ -186,7 +186,15 @@ static sPAPRDREntitySense entity_sense(sPAPRDRConnector *drc)
              */
             state = SPAPR_DR_ENTITY_SENSE_EMPTY;
         } else {
-            state = SPAPR_DR_ENTITY_SENSE_UNUSABLE;
+            /* TODO: behavior should be the same for all logical
+             * DR types, but we make a special case for PHB to
+             * avoid unintended breakage for now
+             */
+            if (drc->type == SPAPR_DR_CONNECTOR_TYPE_PHB) {
+                state = SPAPR_DR_ENTITY_SENSE_NO_SENSOR;
+            } else {
+                state = SPAPR_DR_ENTITY_SENSE_UNUSABLE;
+            }
         }
     }
 

@@ -109,6 +109,7 @@ typedef enum {
  * unusable: device not currently available to OS
  * exchange: (currently unused)
  * recover: (currently unused)
+ * no_sensor: for logical DR only, returned when no resource available
  */
 typedef enum {
     SPAPR_DR_ENTITY_SENSE_EMPTY     = 0,
@@ -116,6 +117,7 @@ typedef enum {
     SPAPR_DR_ENTITY_SENSE_UNUSABLE  = 2,
     SPAPR_DR_ENTITY_SENSE_EXCHANGE  = 3,
     SPAPR_DR_ENTITY_SENSE_RECOVER   = 4,
+    SPAPR_DR_ENTITY_SENSE_NO_SENSOR = -3,
 } sPAPRDREntitySense;
 
 typedef enum {
