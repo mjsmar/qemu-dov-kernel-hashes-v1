@@ -60,6 +60,7 @@
 #include "qemu/error-report.h"
 #include "trace.h"
 #include "hw/nmi.h"
+#include "hw/ppc/spapr_drc.h"
 
 #include "hw/compat.h"
 #include "qemu-common.h"
@@ -951,8 +952,15 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
         spapr_populate_chosen_stdout(fdt, spapr->vio_bus);
     }
 
+    uint32_t drc_type_mask = 0;
     if (smc->dr_lmb_enabled) {
-        _FDT(spapr_drc_populate_dt(fdt, 0, NULL, SPAPR_DR_CONNECTOR_TYPE_LMB));
+        drc_type_mask |= SPAPR_DR_CONNECTOR_TYPE_LMB;
+    }
+    if (smc->dr_phb_enabled) {
+        drc_type_mask |= SPAPR_DR_CONNECTOR_TYPE_PHB;
+    }
+    if (drc_type_mask) {
+        _FDT(spapr_drc_populate_dt(fdt, 0, NULL, drc_type_mask));
     }
 
     _FDT((fdt_pack(fdt)));
