@@ -102,6 +102,7 @@ struct sPAPRPHBVFIOState {
 };
 
 #define SPAPR_PCI_MAX_INDEX          255
+#define SPAPR_DRC_MAX_PHB            (SPAPR_PCI_MAX_INDEX + 1)
 
 #define SPAPR_PCI_BASE_BUID          0x800000020000000ULL
 
