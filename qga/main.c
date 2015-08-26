@@ -82,7 +82,7 @@ struct GAState {
     bool delimit_response;
     bool frozen;
     GList *blacklist;
-    const char *state_filepath_isfrozen;
+    char *state_filepath_isfrozen;
     struct {
         const char *log_filepath;
         const char *pid_filepath;
@@ -90,7 +90,7 @@ struct GAState {
 #ifdef CONFIG_FSFREEZE
     const char *fsfreeze_hook;
 #endif
-    const gchar *pstate_filepath;
+    gchar *pstate_filepath;
     GAPersistentState pstate;
 };
 
@@ -1249,6 +1249,8 @@ end:
         ga_channel_free(s->channel);
     }
     g_list_free_full(s->blacklist, g_free);
+    g_free(s->pstate_filepath);
+    g_free(s->state_filepath_isfrozen);
 
     if (config->daemonize) {
         unlink(config->pid_filepath);
