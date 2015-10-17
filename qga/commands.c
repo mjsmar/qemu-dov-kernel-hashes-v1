@@ -88,6 +88,7 @@ typedef struct GuestExecIOData GuestExecIOData;
 
 struct GuestExecInfo {
     GPid pid;
+    int64_t pid_numeric;
     gint status;
     bool has_output;
     gint finished;
@@ -104,23 +105,33 @@ static struct {
     .processes = QTAILQ_HEAD_INITIALIZER(guest_exec_state.processes),
 };
 
+static int64_t gpid_to_int64(GPid pid)
+{
+#ifdef G_OS_WIN32
+    return GetProcessId(pid);
+#else
+    return (int64_t)pid;
+#endif
+}
+
 static GuestExecInfo *guest_exec_info_add(GPid pid)
 {
     GuestExecInfo *gei;
 
     gei = g_new0(GuestExecInfo, 1);
     gei->pid = pid;
+    gei->pid_numeric = gpid_to_int64(pid);
     QTAILQ_INSERT_TAIL(&guest_exec_state.processes, gei, next);
 
     return gei;
 }
 
-static GuestExecInfo *guest_exec_info_find(GPid pid)
+static GuestExecInfo *guest_exec_info_find(int64_t pid_numeric)
 {
     GuestExecInfo *gei;
 
     QTAILQ_FOREACH(gei, &guest_exec_state.processes, next) {
-        if (gei->pid == pid) {
+        if (gei->pid_numeric == pid_numeric) {
             return gei;
         }
     }
@@ -135,7 +146,7 @@ GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **err)
 
     slog("guest-exec-status called, pid: %u", (uint32_t)pid);
 
-    gei = guest_exec_info_find((GPid)pid);
+    gei = guest_exec_info_find(pid);
     if (gei == NULL) {
         error_setg(err, QERR_INVALID_PARAMETER, "pid");
         return NULL;
@@ -247,8 +258,8 @@ static void guest_exec_child_watch(GPid pid, gint status, gpointer data)
 {
     GuestExecInfo *gei = (GuestExecInfo *)data;
 
-    g_debug("guest_exec_child_watch called, pid: %u, status: %u",
-            (uint32_t)pid, (uint32_t)status);
+    g_debug("guest_exec_child_watch called, pid: %d, status: %u",
+            (int32_t)gpid_to_int64(pid), (uint32_t)status);
 
     gei->status = status;
     gei->finished = true;
@@ -404,7 +415,7 @@ GuestExec *qmp_guest_exec(const char *path,
     }
 
     ge = g_new0(GuestExec, 1);
-    ge->pid = (int64_t)pid;
+    ge->pid = gpid_to_int64(pid);
 
     gei = guest_exec_info_add(pid);
     gei->has_output = has_output;
