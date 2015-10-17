@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include "libqtest.h"
 #include "config-host.h"
@@ -362,7 +363,7 @@ static void test_qga_file_ops(gconstpointer fix)
     enc = g_base64_encode(helloworld, sizeof(helloworld));
     /* write */
     cmd = g_strdup_printf("{'execute': 'guest-file-write',"
-                          " 'arguments': { 'handle': %" G_GINT64_FORMAT ","
+                          " 'arguments': { 'handle': %" PRId64 ","
                           " 'buf-b64': '%s' } }", id, enc);
     ret = qmp_fd(fixture->fd, cmd);
     g_assert_nonnull(ret);
@@ -378,7 +379,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* flush */
     cmd = g_strdup_printf("{'execute': 'guest-file-flush',"
-                          " 'arguments': {'handle': %" G_GINT64_FORMAT "} }",
+                          " 'arguments': {'handle': %" PRId64 "} }",
                           id);
     ret = qmp_fd(fixture->fd, cmd);
     QDECREF(ret);
@@ -386,7 +387,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* close */
     cmd = g_strdup_printf("{'execute': 'guest-file-close',"
-                          " 'arguments': {'handle': %" G_GINT64_FORMAT "} }",
+                          " 'arguments': {'handle': %" PRId64 "} }",
                           id);
     ret = qmp_fd(fixture->fd, cmd);
     QDECREF(ret);
@@ -412,7 +413,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* read */
     cmd = g_strdup_printf("{'execute': 'guest-file-read',"
-                          " 'arguments': { 'handle': %" G_GINT64_FORMAT "} }",
+                          " 'arguments': { 'handle': %" PRId64 "} }",
                           id);
     ret = qmp_fd(fixture->fd, cmd);
     val = qdict_get_qdict(ret, "return");
@@ -429,7 +430,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* read eof */
     cmd = g_strdup_printf("{'execute': 'guest-file-read',"
-                          " 'arguments': { 'handle': %" G_GINT64_FORMAT "} }",
+                          " 'arguments': { 'handle': %" PRId64 "} }",
                           id);
     ret = qmp_fd(fixture->fd, cmd);
     val = qdict_get_qdict(ret, "return");
@@ -444,7 +445,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* seek */
     cmd = g_strdup_printf("{'execute': 'guest-file-seek',"
-                          " 'arguments': { 'handle': %" G_GINT64_FORMAT ", "
+                          " 'arguments': { 'handle': %" PRId64 ", "
                           " 'offset': %d, 'whence': %d } }",
                           id, 6, SEEK_SET);
     ret = qmp_fd(fixture->fd, cmd);
@@ -459,7 +460,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* partial read */
     cmd = g_strdup_printf("{'execute': 'guest-file-read',"
-                          " 'arguments': { 'handle': %" G_GINT64_FORMAT "} }",
+                          " 'arguments': { 'handle': %" PRId64 "} }",
                           id);
     ret = qmp_fd(fixture->fd, cmd);
     val = qdict_get_qdict(ret, "return");
@@ -478,7 +479,7 @@ static void test_qga_file_ops(gconstpointer fix)
 
     /* close */
     cmd = g_strdup_printf("{'execute': 'guest-file-close',"
-                          " 'arguments': {'handle': %" G_GINT64_FORMAT "} }",
+                          " 'arguments': {'handle': %" PRId64 "} }",
                           id);
     ret = qmp_fd(fixture->fd, cmd);
     QDECREF(ret);
@@ -533,7 +534,7 @@ static void test_qga_set_time(gconstpointer fix)
 
     /* set back current time */
     cmd = g_strdup_printf("{'execute': 'guest-set-time',"
-                          " 'arguments': { 'time': %" G_GINT64_FORMAT " } }",
+                          " 'arguments': { 'time': %" PRId64 " } }",
                           current + time * 1000);
     ret = qmp_fd(fixture->fd, cmd);
     g_free(cmd);
@@ -629,7 +630,7 @@ static void test_qga_config(gconstpointer data)
 
     env[0] = g_strdup_printf("QGA_CONF=%s", conf);
     env[1] = NULL;
-    g_spawn_sync(NULL, argv, env, G_SPAWN_DEFAULT,
+    g_spawn_sync(NULL, argv, env, 0,
                  NULL, NULL, &out, &err, &status, &error);
     g_assert_no_error(error);
     g_assert_cmpstr(err, ==, "");
