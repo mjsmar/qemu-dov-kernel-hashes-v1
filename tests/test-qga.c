@@ -83,6 +83,7 @@ fixture_setup(TestFixture *fixture, gconstpointer data)
     g_child_watch_add(fixture->pid, qga_watch, fixture);
 
     fixture->fd = connect_qga(path);
+    g_assert_cmpint(fixture->fd, !=, -1);
 
     g_strfreev(argv);
     g_free(cmd);
