@@ -292,12 +292,14 @@ static void test_qga_get_memory_block_info(gconstpointer fix)
 
     ret = qmp_fd(fixture->fd, "{'execute': 'guest-get-memory-block-info'}");
     g_assert_nonnull(ret);
-    qmp_assert_no_error(ret);
 
-    /* check there is at least some memory */
-    val = qdict_get_qdict(ret, "return");
-    size = qdict_get_int(val, "size");
-    g_assert_cmpint(size, >, 0);
+    /* some systems might not expose memory block info in sysfs */
+    if (!qdict_haskey(ret, "error")) {
+        /* check there is at least some memory */
+        val = qdict_get_qdict(ret, "return");
+        size = qdict_get_int(val, "size");
+        g_assert_cmpint(size, >, 0);
+    }
 
     QDECREF(ret);
 }
@@ -311,12 +313,17 @@ static void test_qga_get_memory_blocks(gconstpointer fix)
 
     ret = qmp_fd(fixture->fd, "{'execute': 'guest-get-memory-blocks'}");
     g_assert_nonnull(ret);
-    qmp_assert_no_error(ret);
 
-    list = qdict_get_qlist(ret, "return");
-    entry = qlist_first(list);
-    g_assert(qdict_haskey(qobject_to_qdict(entry->value), "phys-index"));
-    g_assert(qdict_haskey(qobject_to_qdict(entry->value), "online"));
+    /* some systems might not expose memory block info in sysfs */
+    if (!qdict_haskey(ret, "error")) {
+        list = qdict_get_qlist(ret, "return");
+        entry = qlist_first(list);
+        /* newer versions of qga may return empty list without error */
+        if (entry) {
+            g_assert(qdict_haskey(qobject_to_qdict(entry->value), "phys-index"));
+            g_assert(qdict_haskey(qobject_to_qdict(entry->value), "online"));
+        }
+    }
 
     QDECREF(ret);
 }
