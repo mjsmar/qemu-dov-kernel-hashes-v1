@@ -262,6 +262,9 @@ static void test_qga_get_vcpus(gconstpointer fix)
     QDECREF(ret);
 }
 
+#include "qapi/qmp/qjson.h"
+#include "qapi/qmp/qstring.h"
+
 static void test_qga_get_fsinfo(gconstpointer fix)
 {
     const TestFixture *fixture = fix;
@@ -270,6 +273,7 @@ static void test_qga_get_fsinfo(gconstpointer fix)
     const QListEntry *entry;
 
     ret = qmp_fd(fixture->fd, "{'execute': 'guest-get-fsinfo'}");
+    g_print("ret: %s\n", qstring_get_str(qobject_to_json_pretty(QOBJECT(ret))));
     g_assert_nonnull(ret);
     qmp_assert_no_error(ret);
 
