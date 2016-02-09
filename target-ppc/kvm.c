@@ -2537,3 +2537,18 @@ int kvmppc_enable_hwrng(void)
 
     return kvmppc_enable_hcall(kvm_state, H_RANDOM);
 }
+
+int kvmppc_update_sdr1(PowerPCCPU *cpu)
+{
+    CPUState *cs = CPU(cpu);
+
+    if (!kvm_enabled()) {
+        return 0; /* nothing to do */
+    }
+
+    /* The normal KVM_PUT_RUNTIME_STATE doesn't include SDR1, which is
+     * why we need an explicit update for it.  KVM_PUT_RESET_STATE is
+     * overkill, but this is a pretty rare operation, so it's simpler
+     * than writing a special purpose updater */
+    return kvm_arch_put_registers(cs, KVM_PUT_RESET_STATE);
+}
