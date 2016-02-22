@@ -1083,6 +1083,151 @@ static int spapr_create_pci_child_dt(sPAPRPHBState *phb, PCIDevice *dev,
     return offset;
 }
 
+#define ALIGN(a, s) (((a) + ((s) - 1)) & ~((s) - 1))
+
+/*
+ * sphb->memspace and sphb->iospace are address spaces since they are
+ * root MRs.
+ * sphb->iowindow is an alias to sphb->iospace @ 0.
+ * sphb->memwindow is an alias to sphb->memspace @ SPAPR_PCI_MEM_WIN_BUS_OFFSET
+ *
+ * IO windows are mapped into system memory at sphb->io_win_addr and
+ * sphb->mem_win_addr, but specified as PHB windows at 0 offsets (ASs)
+ *
+ * The mem win bus offset is passed via DT, so guest won't program low
+ * areas of memspace that aren't mapped into guest system memory
+ *
+ */
+static pcibus_t find_size_aligned_addr(MemoryRegion *as,
+                                       hwaddr range_start,
+                                       hwaddr range_size,
+                                       uint64_t size)
+{
+    hwaddr addr = ALIGN(range_start, size);
+
+    /* TODO: range size probably works better than max */
+
+    while (addr + size < range_start + range_size) {
+        MemoryRegionSection mrs = memory_region_find(as, addr, size);
+
+        /* if no region overlaps the range, we're done */
+        if (!int128_nz(mrs.size)) {
+            return addr;
+        }
+        error_report("overlap found region %p/%s @ %lx, region size: >%lx<", mrs.mr, mrs.mr->name, addr, memory_region_size(mrs.mr));
+
+        addr = MAX(ALIGN(mrs.offset_within_address_space
+                         - mrs.offset_within_region
+                         + memory_region_size(mrs.mr),
+                         size),
+                   addr + size);
+        error_report("next_addr: %lx", addr);
+        memory_region_unref(mrs.mr);
+        /* TODO: if we know sections always return the top-most region, we can
+         * use mr->container == window to filter results and avoid address_space_init
+         * actually...if section mr is not us, we can assume it's on top of us, since
+         * our window hides everything under...............................
+         */
+    }
+
+    return PCI_BAR_UNMAPPED;
+}
+
+static void spapr_phb_assign_bars(sPAPRPHBState *sphb, PCIDevice *pdev)
+{
+    int i;
+    PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
+
+    for (i = 0; i < PCI_NUM_REGIONS; i++) {
+        PCIIORegion *r = &pdev->io_regions[i];
+        MemoryRegion *as;
+        pcibus_t range_start = 0, range_size = UINT32_MAX, addr;
+        uint64_t addr_mask;
+        uint16_t cmd_reg;
+
+        if (!r->size) {
+            continue;
+        }
+
+        error_report("Mapping PCI BAR %d for PCI device %x, size: %lx",
+                     i, pdev->devfn, r->size);
+
+        cmd_reg = pci_default_read_config(pdev, PCI_COMMAND, 2);
+
+        /* determine BAR type and appropriate address space to search within */
+        if (r->type & PCI_BASE_ADDRESS_SPACE_IO) {
+            as = phb->bus->address_space_io;
+            g_assert(as == &sphb->iospace);
+            cmd_reg |= PCI_COMMAND_IO;
+            addr_mask = PCI_BASE_ADDRESS_IO_MASK;
+            range_start = r->size; /* avoid 0 BARs, SLOF does */
+            range_size = memory_region_size(&sphb->iospace);
+            error_report("IO BAR");
+        } else {
+            as = phb->bus->address_space_mem;
+            g_assert(as == &sphb->memspace);
+            /* only MMIO addresses above a certain offset
+             * are visible in guest memory address space
+             */
+            cmd_reg |= PCI_COMMAND_MEMORY;
+            addr_mask = PCI_BASE_ADDRESS_MEM_MASK;
+            if (r->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+                range_start = 1ULL << 32;
+                range_size = (memory_region_size(&sphb->memspace) > range_start)
+                    ? memory_region_size(&sphb->memspace) - range_start
+                    : 0;
+                error_report("MEM64 BAR");
+            } else {
+                range_start = SPAPR_PCI_MEM_WIN_BUS_OFFSET;
+                /* make sure size doesn't overrun 32 bits */
+                range_size = MIN((1ULL << 32) - range_start,
+                                  memory_region_size(&sphb->memspace));
+                /* SLOF reserves upper half for non-prefetchable regions. */
+                range_size /= 2;
+                if ((r->type & PCI_BASE_ADDRESS_MEM_PREFETCH) == 0) {
+                    range_start += range_size;
+                    range_size = MIN((1ULL << 32) - range_start, range_size);
+                }
+                error_report("MEM32 BAR");
+                /* TODO: mmio64 should use mem64, but fall back to mmio32 if we
+                 * dont have anything in that range */
+            }
+        }
+
+        /* TODO: this differentiates between io/mmio, but what about the
+         * other "mem" range SLOF searches?
+         *
+         * MEM64 surely plays a role? or is that just for programming device?
+         * Should at least limit search space?
+         */
+        addr = find_size_aligned_addr(as, range_start, range_size, r->size);
+        if (addr == PCI_BAR_UNMAPPED) {
+            error_report("Failed to map PCI BAR %d for PCI device %x",
+                         i, pdev->devfn);
+            abort();
+            continue;
+        }
+        error_report("found addr: %lx", addr);
+
+        /* need to enable device prior to BAR assignment */
+        pci_default_write_config(pdev, PCI_COMMAND, cmd_reg, 2);
+
+        if (i == PCI_ROM_SLOT) {
+            addr |= PCI_ROM_ADDRESS_ENABLE;
+            addr_mask = addr_mask | PCI_ROM_ADDRESS_ENABLE;
+        }
+
+        pci_default_write_config(pdev, pci_bar(pdev, i),
+                                 addr & (addr_mask & 0xFFFFFFFFULL), 4);
+        if (range_start == (1ULL << 32)) {
+            pci_default_write_config(pdev, pci_bar(pdev, i) + 4,
+                                     (addr >> 32) & 0xFFFFFFFFULL, 4);
+        }
+
+        /* TODO: anything special for interrupt assignments? */
+    }
+}
+
 static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
                                      sPAPRPHBState *phb,
                                      PCIDevice *pdev,
@@ -1099,7 +1244,10 @@ static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
         spapr_tce_set_need_vfio(tcet, true);
     }
 
+    spapr_phb_assign_bars(phb, pdev);
+
     if (dev->hotplugged) {
+        //assign bars?
         fdt = create_device_tree(&fdt_size);
         fdt_start_offset = spapr_create_pci_child_dt(phb, pdev, fdt, 0);
         if (!fdt_start_offset) {
@@ -1378,6 +1526,9 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     sprintf(namebuf, "%s.mmio", sphb->dtbusname);
     memory_region_init(&sphb->memspace, OBJECT(sphb), namebuf, UINT64_MAX);
 
+    sprintf(namebuf, "%s.mmio.as", sphb->dtbusname);
+    address_space_init(&sphb->memspace_as, &sphb->memspace, namebuf);
+
     sprintf(namebuf, "%s.mmio-alias", sphb->dtbusname);
     memory_region_init_alias(&sphb->memwindow, OBJECT(sphb),
                              namebuf, &sphb->memspace,
@@ -1389,6 +1540,9 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     sprintf(namebuf, "%s.io", sphb->dtbusname);
     memory_region_init(&sphb->iospace, OBJECT(sphb),
                        namebuf, SPAPR_PCI_IO_WIN_SIZE);
+
+    sprintf(namebuf, "%s.io.as", sphb->dtbusname);
+    address_space_init(&sphb->iospace_as, &sphb->iospace, namebuf);
 
     sprintf(namebuf, "%s.io-alias", sphb->dtbusname);
     memory_region_init_alias(&sphb->iowindow, OBJECT(sphb), namebuf,
