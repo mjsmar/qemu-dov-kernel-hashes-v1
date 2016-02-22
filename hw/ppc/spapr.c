@@ -2901,12 +2901,28 @@ static void spapr_set_vsmt(Object *obj, Visitor *v, const char *name,
     visit_type_uint32(v, name, (uint32_t *)opaque, errp);
 }
 
+static bool spapr_get_preassign_pci_bars(Object *obj, Error **errp)
+{
+    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
+
+    return spapr->preassign_pci_bars;
+}
+
+static void spapr_set_preassign_pci_bars(Object *obj, bool value,
+                                         Error **errp)
+{
+    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
+
+    spapr->preassign_pci_bars = value;
+}
+
 static void spapr_instance_init(Object *obj)
 {
     sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
 
     spapr->htab_fd = -1;
     spapr->use_hotplug_event_source = true;
+    spapr->preassign_pci_bars = true;
     object_property_add_str(obj, "kvm-type",
                             spapr_get_kvm_type, spapr_set_kvm_type, NULL);
     object_property_set_description(obj, "kvm-type",
@@ -2936,6 +2952,20 @@ static void spapr_instance_init(Object *obj)
     object_property_set_description(obj, "vsmt",
                                     "Virtual SMT: KVM behaves as if this were"
                                     " the host's SMT mode", &error_abort);
+    object_property_add_bool(obj, "preassign-pci-bars",
+                            spapr_get_preassign_pci_bars,
+                            spapr_set_preassign_pci_bars,
+                            NULL);
+    object_property_set_description(obj, "preassign-pci-bars",
+                                    "Have QEMU do BAR assignment, not"
+                                    " SLOF/guest. This is needed for making"
+                                    " use of RPAPHP-based hotplug in guests"
+                                    " that advertise OV5_HP_MULTISLOT CAS"
+                                    " capability, or guests that don't support"
+                                    " generic PCI rescan. (required to support"
+                                    " EEH for hotplugged PCI passthrough"
+                                    " devices)",
+                                    NULL);
 }
 
 static void spapr_machine_finalizefn(Object *obj)
@@ -4015,7 +4045,10 @@ DEFINE_SPAPR_MACHINE(2_12_sxxm, "2.12-sxxm", false);
 
 static void spapr_machine_2_11_instance_options(MachineState *machine)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(machine);
+
     spapr_machine_2_12_instance_options(machine);
+    spapr->preassign_pci_bars = false;
 }
 
 static void spapr_machine_2_11_class_options(MachineClass *mc)

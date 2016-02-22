@@ -24,6 +24,7 @@
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_host.h"
 #include "hw/ppc/xics.h"
+#include "hw/ppc/spapr_pci_resources.h"
 
 #define TYPE_SPAPR_PCI_HOST_BRIDGE "spapr-pci-host-bridge"
 
@@ -52,6 +53,7 @@ struct sPAPRPHBState {
     char *dtbusname;
     bool dr_enabled;
 
+    AddressSpace memspace_as, iospace_as;
     MemoryRegion memspace, iospace;
     hwaddr mem_win_addr, mem_win_size, mem64_win_addr, mem64_win_size;
     uint64_t mem64_win_pciaddr;
@@ -87,6 +89,10 @@ struct sPAPRPHBState {
     uint32_t mig_liobn;
     hwaddr mig_mem_win_addr, mig_mem_win_size;
     hwaddr mig_io_win_addr, mig_io_win_size;
+
+    /* QEMU-assigned BARs */
+    bool assign_bars;
+    sPAPRPCIResources *res;
 };
 
 #define SPAPR_PCI_MEM_WIN_BUS_OFFSET 0x80000000ULL

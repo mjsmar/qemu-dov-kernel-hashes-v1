@@ -49,6 +49,7 @@
 #include "sysemu/kvm.h"
 #include "sysemu/hostmem.h"
 #include "sysemu/numa.h"
+#include "hw/ppc/spapr_pci_resources.h"
 
 /* Copied from the kernel arch/powerpc/platforms/pseries/msi.c */
 #define RTAS_QUERY_FN           0
@@ -88,6 +89,16 @@ PCIDevice *spapr_pci_find_dev(sPAPRMachineState *spapr, uint64_t buid,
     }
 
     return pci_find_device(phb->bus, bus_num, devfn);
+}
+
+static sPAPRPHBState *spapr_pci_dev_to_phb(PCIDevice *pci_dev)
+{
+	PCIBus *bus;
+
+	g_assert_nonnull(pci_dev);
+	bus = pci_device_root_bus(pci_dev);
+
+	return SPAPR_PCI_HOST_BRIDGE(OBJECT(bus)->parent);
 }
 
 static uint32_t rtas_pci_cfgaddr(uint32_t arg)
@@ -1377,6 +1388,167 @@ static int spapr_create_pci_child_dt(sPAPRPHBState *phb, PCIDevice *dev,
     return offset;
 }
 
+#if 0
+    hwaddr addr = ALIGN(range_start, size);
+
+    /* TODO: range size probably works better than max */
+    error_report("find_addr1, as: %s, range_start: %lx, range_size: %lx, start_addr: %lx, size: %lx",
+                 as->name, range_start, range_size, addr, size);
+
+    while (addr + size < range_start + range_size) {
+        MemoryRegionSection mrs = memory_region_find(as, addr, size);
+
+        error_report("find_addr2, as: %s, range_start: %lx, range_size: %lx, start_addr: %lx, size: %lx",
+                     as->name, range_start, range_size, addr, size);
+        /* if no region overlaps the range, we're done */
+#if 0
+        if (!int128_nz(mrs.size)) {
+            return addr;
+        }
+#endif
+        if (mrs.mr == NULL) {
+            return addr;
+        }
+        error_report("overlap found region %p/%s @ %lx, region size: >%lx<", mrs.mr, mrs.mr->name, addr, memory_region_size(mrs.mr));
+
+        addr = MAX(ALIGN(mrs.offset_within_address_space
+                         - mrs.offset_within_region
+                         + memory_region_size(mrs.mr),
+                         size),
+                   addr + size);
+        error_report("next_addr: %lx", addr);
+        memory_region_unref(mrs.mr);
+        /* TODO: if we know sections always return the top-most region, we can
+         * use mr->container == window to filter results and avoid address_space_init
+         * actually...if section mr is not us, we can assume it's on top of us, since
+         * our window hides everything under...............................
+         */
+    }
+
+    return PCI_BAR_UNMAPPED;
+#endif
+
+static void spapr_phb_release_bars(sPAPRPHBState *sphb, PCIDevice *pdev)
+{
+    int i;
+
+    for (i = 0; i < PCI_NUM_REGIONS; i++) {
+        PCIIORegion *r = &pdev->io_regions[i];
+
+        if (!r->size) {
+            continue;
+        }
+
+        spapr_pci_resources_release_bar_region(sphb->res, pdev->devfn, i);
+    }
+}
+
+static void spapr_phb_assign_bars(sPAPRPHBState *sphb, PCIDevice *pdev,
+                                  bool hotplugged)
+{
+    int i;
+
+    for (i = 0; i < PCI_NUM_REGIONS; i++) {
+        PCIIORegion *r = &pdev->io_regions[i];
+        pcibus_t addr;
+        uint64_t addr_mask;
+        uint16_t cmd_reg;
+        sPAPRPCIResourceType rtype;
+
+        if (!r->size) {
+            continue;
+        }
+
+        /* FIXME: verify the order of spapr_pci reset relative to non-BAR
+         * mappings like vga to ensure there's no risk of ever clobbering
+         * anything. vga seems to get legacy regions mapped in as part of
+         * PCI_COMMAND enablement, which happens here after we've already
+         * chosen a BAR. with enough IO regions that might cause an
+         * overlap. Does SLOF deal with this in any way?
+         *
+         * Maybe a second pass to re-verify mapping is valid after device
+         * enablement?
+         */
+        /* FIXME: verify whether or there is an existing bug due to how
+         * SLOF seemingly doesn't reserve legacy vga regions. See if some
+         * combinations of devices can cause SLOF to cause an overlap.
+         */
+        /* FIXME: there might be a small race window in the region search
+         * code when doing hotplug. If a device is offlined/onlined
+         * manually in the guest, it's regions might be temporarily
+         * unmapped. even if those region mapping don't change (and thus
+         * honor the platform-asigned mappings), we might erroneously
+         * note these regions as free for another device unless we track
+         * all our assignments separately. This makes for a fairly strong
+         * case for tracking the offsets just like SLOF...
+         */
+        error_report("Mapping PCI BAR %d for PCI device %x, size: %lx",
+                     i, pdev->devfn, r->size);
+
+        cmd_reg = pci_default_read_config(pdev, PCI_COMMAND, 2);
+
+        /* determine BAR type and appropriate address space to search within */
+        if (r->type & PCI_BASE_ADDRESS_SPACE_IO) {
+            error_report("IO BAR");
+            cmd_reg |= PCI_COMMAND_IO;
+            addr_mask = PCI_BASE_ADDRESS_IO_MASK;
+            rtype = SPAPR_PCI_RESOURCE_TYPE_IO;
+        } else {
+            cmd_reg |= PCI_COMMAND_MEMORY;
+            addr_mask = PCI_BASE_ADDRESS_MEM_MASK;
+            if (r->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+                error_report("MEM64 BAR");
+                rtype = SPAPR_PCI_RESOURCE_TYPE_MMIO64;
+                /*
+                rtype = ((r->type & PCI_BASE_ADDRESS_MEM_PREFETCH) == 0) ?
+                    SPAPR_PCI_RESOURCE_TYPE_MMIO64 :
+                    SPAPR_PCI_RESOURCE_TYPE_MEM64;
+                    */
+            } else {
+                error_report("MEM32 BAR");
+                rtype = ((r->type & PCI_BASE_ADDRESS_MEM_PREFETCH) == 0) ?
+                    SPAPR_PCI_RESOURCE_TYPE_MMIO32 :
+                    SPAPR_PCI_RESOURCE_TYPE_MEM32;
+            }
+        }
+
+        /* TODO: verify difference between mmio64 and mem64 in slof */
+
+        addr = spapr_pci_resources_request_bar_region(sphb->res, rtype, r->size,
+                                                      hotplugged, pdev->devfn, i);
+                
+        if (addr == HWADDR_MAX) {
+            error_report("Failed to map PCI BAR %d for PCI device %x",
+                         i, pdev->devfn);
+            /* return and report error? */
+            continue; 
+        }
+        error_report("found addr: %lx", addr);
+
+        /* TODO: since SLOF disables prior to kernel boot, should we do the same?
+         * what about hotplug? and does this apply to all devices, or just devices
+         * with a specific device file in slof?
+         */
+        /* need to enable device prior to BAR assignment */
+        pci_default_write_config(pdev, PCI_COMMAND, cmd_reg, 2);
+
+        if (i == PCI_ROM_SLOT) {
+            addr |= PCI_ROM_ADDRESS_ENABLE;
+            addr_mask = addr_mask | PCI_ROM_ADDRESS_ENABLE;
+        }
+
+        pci_default_write_config(pdev, pci_bar(pdev, i),
+                                 addr & (addr_mask & 0xFFFFFFFFULL), 4);
+        if (r->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            pci_default_write_config(pdev, pci_bar(pdev, i) + 4,
+                                     (addr >> 32) & 0xFFFFFFFFULL, 4);
+        }
+
+        error_report("DONE Mapping PCI BAR %d for PCI device %x, size: %lx",
+                     i, pdev->devfn, r->size);
+    }
+}
+
 /* Callback to be called during DRC release. */
 void spapr_phb_remove_pci_device_cb(DeviceState *dev)
 {
@@ -1392,6 +1564,7 @@ void spapr_phb_remove_pci_device_cb(DeviceState *dev)
      */
     pci_device_reset(PCI_DEVICE(dev));
     object_unparent(OBJECT(dev));
+    spapr_phb_release_bars(spapr_pci_dev_to_phb(PCI_DEVICE(dev)), PCI_DEVICE(dev));
 }
 
 static sPAPRDRConnector *spapr_phb_get_pci_func_drc(sPAPRPHBState *phb,
@@ -1459,6 +1632,12 @@ static void spapr_pci_plug(HotplugHandler *plug_handler,
                    " additional functions can no longer be exposed to guest.",
                    slotnr, bus->devices[PCI_DEVFN(slotnr, 0)]->name);
         goto out;
+    }
+
+    /* TODO: should we do this for hotplug only? or move everything to qemu? */
+    /* TODO: if we move everything to qemu, this needs to be at reset as well */
+    if (plugged_dev->hotplugged) {
+        spapr_phb_assign_bars(phb, pdev, plugged_dev->hotplugged);
     }
 
     fdt = create_device_tree(&fdt_size);
@@ -1644,6 +1823,17 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     memory_region_init(&sphb->memspace, OBJECT(sphb), namebuf, UINT64_MAX);
     g_free(namebuf);
 
+#if 0
+    /* TODO: we need this for searching available regions relative
+     * to mmio space instead of system memory overall. if we switch
+     * to managing assignments independently of MemoryRegion we
+     * won't need this anymore.
+     */
+    namebuf = g_strdup_printf("%s.mmio.as", sphb->dtbusname);
+    address_space_init(&sphb->memspace_as, &sphb->memspace, namebuf);
+    g_free(namebuf);
+#endif
+
     namebuf = g_strdup_printf("%s.mmio32-alias", sphb->dtbusname);
     memory_region_init_alias(&sphb->mem32window, OBJECT(sphb),
                              namebuf, &sphb->memspace,
@@ -1670,6 +1860,18 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
                        namebuf, SPAPR_PCI_IO_WIN_SIZE);
     g_free(namebuf);
 
+#if 0
+    /* TODO: try to avoid this since it might break migration */
+    /* TODO: we might not even really use it anymore? */
+    /* TODO: YES, we do. We can't find overlapping regions via
+     * memory_find_region unless we init the as. we need this for
+     * mmio too (we don't create as for it anymore now...why?)
+     */
+    namebuf = g_strdup_printf("%s.io.as", sphb->dtbusname);
+    address_space_init(&sphb->iospace_as, &sphb->iospace, namebuf);
+    g_free(namebuf);
+#endif
+
     namebuf = g_strdup_printf("%s.io-alias", sphb->dtbusname);
     memory_region_init_alias(&sphb->iowindow, OBJECT(sphb), namebuf,
                              &sphb->iospace, 0, SPAPR_PCI_IO_WIN_SIZE);
@@ -1683,6 +1885,38 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
                                 PCI_DEVFN(0, 0), PCI_NUM_PINS, TYPE_PCI_BUS);
     phb->bus = bus;
     qbus_set_hotplug_handler(BUS(phb->bus), DEVICE(sphb), NULL);
+
+    if (spapr->preassign_pci_bars) {
+        sphb->res = spapr_pci_resources_new(sphb->dtbusname,
+                                            SPAPR_PCI_IO_WIN_SIZE,
+                                            UINT64_MAX);
+        spapr_pci_resources_add_io_range(sphb->res,
+                                         SPAPR_PCI_RESOURCE_TYPE_IO,
+                                         0, SPAPR_PCI_IO_WIN_SIZE);
+        /* slof uses top half of 32-bit range for mmio32, bottom for mem32 */
+        spapr_pci_resources_add_mem_range(sphb->res,
+                                          SPAPR_PCI_RESOURCE_TYPE_MMIO32,
+                                          SPAPR_PCI_MEM_WIN_BUS_OFFSET +
+                                          sphb->mem_win_size / 2,
+                                          sphb->mem_win_size / 2);
+        spapr_pci_resources_add_mem_range(sphb->res,
+                                          SPAPR_PCI_RESOURCE_TYPE_MEM32,
+                                          SPAPR_PCI_MEM_WIN_BUS_OFFSET,
+                                          sphb->mem_win_size / 2);
+        /* TODO: verify that SLOF has no special handling for MMIO64 vs.
+         * MEM64
+         */
+        spapr_pci_resources_add_mem_range(sphb->res,
+                                          SPAPR_PCI_RESOURCE_TYPE_MMIO64,
+                                          sphb->mem64_win_pciaddr,
+                                          sphb->mem64_win_size);
+        /*
+        spapr_pci_resources_add_mem_range(sphb->res,
+                                          SPAPR_PCI_RESOURCE_TYPE_MEM64,
+                                          sphb->mem64_win_pciaddr,
+                                          sphb->mem64_win_size);
+                                          */
+    }
 
     /*
      * Initialize PHB address space.
@@ -1804,6 +2038,7 @@ void spapr_phb_dma_reset(sPAPRPHBState *sphb)
 static void spapr_phb_reset(DeviceState *qdev)
 {
     sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
+    int i;
 
     spapr_phb_dma_reset(sphb);
 
@@ -1812,6 +2047,30 @@ static void spapr_phb_reset(DeviceState *qdev)
 
     if (spapr_phb_eeh_available(SPAPR_PCI_HOST_BRIDGE(qdev))) {
         spapr_phb_vfio_reset(qdev);
+    }
+
+    /* Re-assign boot-time BARs */
+    /* TODO: does this run after the actual device reset? */
+    /* FIXME: what about secondary buses? and do bridge devices
+     * need special handling?
+     * Also enable/disabling, need to verify how SLOF does it and
+     * lock down a protocol for when to do it
+     */
+    if (sphb->res) {
+        error_report("reassigning BARs");
+        /* TODO: do we need to account for vga legacy regions? */
+        spapr_pci_resources_reset(sphb->res);
+        for (i = PCI_SLOT_MAX - 1; i >= 0; i--) {
+            PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
+            PCIDevice *pci_dev;
+            int bus_num = 0;
+            int devfn = i * 8;
+
+            pci_dev = pci_find_device(phb->bus, bus_num, devfn);
+            if (pci_dev) {
+                spapr_phb_assign_bars(sphb, pci_dev, false);
+            }
+        }
     }
 }
 
@@ -2195,6 +2454,10 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     /* Walk the bridges and program the bus numbers*/
     spapr_phb_pci_enumerate(phb);
     _FDT(fdt_setprop_cell(fdt, bus_off, "qemu,phb-enumerated", 0x1));
+
+    if (phb->assign_bars) {
+        _FDT(fdt_setprop_cell(fdt, bus_off, "qemu,pci-assigned", 0x1));
+    }
 
     /* Populate tree nodes with PCI devices attached */
     s_fdt.fdt = fdt;

@@ -160,6 +160,12 @@ struct sPAPRMachineState {
      * occurs during the unplug process. */
     QTAILQ_HEAD(, sPAPRDIMMState) pending_dimm_unplugs;
 
+    /* Have QEMU do BAR assignment, not SLOF/guest. This is needed for making
+     * use of RPAPHP-based hotplug in guests that advertise OV5_HP_MULTISLOT
+     * CAS capability, or guests that don't support generic PCI rescan.
+     */
+    bool preassign_pci_bars;
+
     /*< public >*/
     char *kvm_type;
     MemoryHotplugState hotplug_memory;
