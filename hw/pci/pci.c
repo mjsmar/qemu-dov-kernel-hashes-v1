@@ -1173,6 +1173,7 @@ static void pci_update_mappings(PCIDevice *d)
                                           PCI_SLOT(d->devfn),
                                           PCI_FUNC(d->devfn),
                                           i, r->addr, r->size);
+            error_report(">>UNmapping BAR %d for device %x @ %lx", i, d->devfn, r->addr);
             memory_region_del_subregion(r->address_space, r->memory);
         }
         r->addr = new_addr;
@@ -1181,6 +1182,7 @@ static void pci_update_mappings(PCIDevice *d)
                                           PCI_SLOT(d->devfn),
                                           PCI_FUNC(d->devfn),
                                           i, r->addr, r->size);
+            error_report(">>mapping BAR %d for device %x @ %lx", i, d->devfn, r->addr);
             memory_region_add_subregion_overlap(r->address_space,
                                                 r->addr, r->memory, 1);
         }
