@@ -840,6 +840,35 @@ typedef struct ResourceProps {
     uint32_t assigned_len;
 } ResourceProps;
 
+static void debug_resource_props(ResourceProps *rp)
+{
+    int i;
+
+    printf("reg fields:\n");
+
+    for (i = 0; i < rp->reg_len / sizeof(ResourceFields); i++) {
+        printf("%i: phys_{hi,mid,lo}: %xh %xh %xh, size_{hi,lo}: %xh %xh\n",
+               i,
+               be32_to_cpu(rp->reg[i].phys_hi),
+               be32_to_cpu(rp->reg[i].phys_mid),
+               be32_to_cpu(rp->reg[i].phys_lo),
+               be32_to_cpu(rp->reg[i].size_hi),
+               be32_to_cpu(rp->reg[i].size_lo));
+    }
+
+    printf("assigned fields:\n");
+
+    for (i = 0; i < rp->assigned_len / sizeof(ResourceFields); i++) {
+        printf("%i: phys_{hi,mid,lo}: %xh %xh %xh, size_{hi,lo}: %xh %xh\n",
+               i,
+               be32_to_cpu(rp->assigned[i].phys_hi),
+               be32_to_cpu(rp->assigned[i].phys_mid),
+               be32_to_cpu(rp->assigned[i].phys_lo),
+               be32_to_cpu(rp->assigned[i].size_hi),
+               be32_to_cpu(rp->assigned[i].size_lo));
+    }
+}
+
 /* fill in the 'reg'/'assigned-resources' OF properties for
  * a PCI device. 'reg' describes resource requirements for a
  * device's IO/MEM regions, 'assigned-addresses' describes the
@@ -944,6 +973,7 @@ static void populate_resource_props(PCIDevice *d, ResourceProps *rp)
 
     rp->reg_len = reg_idx * sizeof(ResourceFields);
     rp->assigned_len = assigned_idx * sizeof(ResourceFields);
+    debug_resource_props(rp);
 }
 
 static uint32_t spapr_phb_get_pci_drc_index(sPAPRPHBState *phb,
