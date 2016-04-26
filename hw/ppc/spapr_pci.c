@@ -849,7 +849,7 @@ static void debug_resource_props(ResourceProps *rp)
 
     printf("reg fields:\n");
 
-    for (i = 0; i < rp->reg_len; i++) {
+    for (i = 0; i < rp->reg_len / sizeof(ResourceFields); i++) {
         printf("%i: phys_{hi,mid,lo}: %xh %xh %xh, size_{hi,lo}: %xh %xh\n",
                i,
                be32_to_cpu(rp->reg[i].phys_hi),
@@ -861,7 +861,7 @@ static void debug_resource_props(ResourceProps *rp)
 
     printf("assigned fields:\n");
 
-    for (i = 0; i < rp->assigned_len; i++) {
+    for (i = 0; i < rp->assigned_len / sizeof(ResourceFields); i++) {
         printf("%i: phys_{hi,mid,lo}: %xh %xh %xh, size_{hi,lo}: %xh %xh\n",
                i,
                be32_to_cpu(rp->assigned[i].phys_hi),
