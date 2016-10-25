@@ -27,7 +27,7 @@ def is_string(arg):
         return False
 
 
-def generate_h_begin(events, group):
+def generate_h_begin(events):
     for event in events:
         out('void _simple_%(api)s(%(args)s);',
             api=event.api(),
@@ -35,13 +35,13 @@ def generate_h_begin(events, group):
     out('')
 
 
-def generate_h(event, group):
+def generate_h(event):
     out('        _simple_%(api)s(%(args)s);',
         api=event.api(),
         args=", ".join(event.args.names()))
 
 
-def generate_c_begin(events, group):
+def generate_c_begin(events):
     out('#include "qemu/osdep.h"',
         '#include "trace.h"',
         '#include "trace/control.h"',
@@ -49,7 +49,7 @@ def generate_c_begin(events, group):
         '')
 
 
-def generate_c(event, group):
+def generate_c(event):
     out('void _simple_%(api)s(%(args)s)',
         '{',
         '    TraceBufferRecord rec;',

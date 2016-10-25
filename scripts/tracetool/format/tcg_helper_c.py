@@ -40,7 +40,7 @@ def vcpu_transform_args(args, mode):
             assert False
 
 
-def generate(events, backend, group):
+def generate(events, backend):
     events = [e for e in events
               if "disable" not in e.properties]
 

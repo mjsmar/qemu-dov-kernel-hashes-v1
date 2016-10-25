@@ -18,7 +18,7 @@ from tracetool.transform import *
 import tracetool.vcpu
 
 
-def generate(events, backend, group):
+def generate(events, backend):
     events = [e for e in events
               if "disable" not in e.properties]
 
