@@ -74,7 +74,7 @@ def exists(name):
     return tracetool.try_import("tracetool.format." + name)[1]
 
 
-def generate(events, format, backend, group):
+def generate(events, format, backend):
     if not exists(format):
         raise ValueError("unknown format: %s" % format)
     format = format.replace("-", "_")
@@ -82,4 +82,4 @@ def generate(events, format, backend, group):
                                 "generate")[1]
     if func is None:
         raise AttributeError("format has no 'generate': %s" % format)
-    func(events, backend, group)
+    func(events, backend)

@@ -35,12 +35,12 @@ def binary():
     return BINARY
 
 
-def generate_h_begin(events, group):
+def generate_h_begin(events):
     out('#include "trace/generated-tracers-dtrace.h"',
         '')
 
 
-def generate_h(event, group):
+def generate_h(event):
     out('        QEMU_%(uppername)s(%(argnames)s);',
         uppername=event.name.upper(),
         argnames=", ".join(event.args.names()))
