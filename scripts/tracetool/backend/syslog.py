@@ -19,12 +19,12 @@ from tracetool import out
 PUBLIC = True
 
 
-def generate_h_begin(events, group):
+def generate_h_begin(events):
     out('#include <syslog.h>',
         '')
 
 
-def generate_h(event, group):
+def generate_h(event):
     argnames = ", ".join(event.args.names())
     if len(event.args) > 0:
         argnames = ", " + argnames

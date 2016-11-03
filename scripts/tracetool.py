@@ -15,8 +15,6 @@ __email__      = "stefanha@linux.vnet.ibm.com"
 
 import sys
 import getopt
-import os.path
-import re
 
 from tracetool import error_write, out
 import tracetool.backend
@@ -61,16 +59,6 @@ Options:
         sys.exit(0)
     else:
         sys.exit(1)
-
-def make_group_name(filename):
-    dirname = os.path.realpath(os.path.dirname(filename))
-    basedir = os.path.join(os.path.dirname(__file__), os.pardir)
-    basedir = os.path.realpath(os.path.abspath(basedir))
-    dirname = dirname[len(basedir) + 1:]
-
-    if dirname == "":
-        return "common"
-    return re.sub(r"[^A-Za-z0-9]", "_", dirname)
 
 def main(args):
     global _SCRIPT
@@ -145,10 +133,8 @@ def main(args):
     with open(args[0], "r") as fh:
         events = tracetool.read_events(fh)
 
-    group = make_group_name(args[0])
-
     try:
-        tracetool.generate(events, group, arg_format, arg_backends,
+        tracetool.generate(events, arg_format, arg_backends,
                            binary=binary, probe_prefix=probe_prefix)
     except tracetool.TracetoolError as e:
         error_opt(str(e))

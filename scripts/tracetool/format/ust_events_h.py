@@ -16,7 +16,7 @@ __email__      = "stefanha@redhat.com"
 from tracetool import out
 
 
-def generate(events, backend, group):
+def generate(events, backend):
     events = [e for e in events
               if "disabled" not in e.properties]
 
@@ -28,9 +28,8 @@ def generate(events, backend, group):
         '#undef TRACEPOINT_INCLUDE_FILE',
         '#define TRACEPOINT_INCLUDE_FILE ./generated-ust-provider.h',
         '',
-        '#if !defined (TRACE_%s_GENERATED_UST_H) || \\'  % group.upper(),
-        '     defined(TRACEPOINT_HEADER_MULTI_READ)',
-        '#define TRACE_%s_GENERATED_UST_H' % group.upper(),
+        '#if !defined (TRACE__GENERATED_UST_H) || defined(TRACEPOINT_HEADER_MULTI_READ)',
+        '#define TRACE__GENERATED_UST_H',
         '',
         '#include "qemu-common.h"',
         '#include <lttng/tracepoint.h>',
@@ -95,7 +94,7 @@ def generate(events, backend, group):
                 '',
                 name=e.name)
 
-    out('#endif /* TRACE_%s_GENERATED_UST_H */' % group.upper(),
+    out('#endif /* TRACE__GENERATED_UST_H */',
         '',
         '/* This part must be outside ifdef protection */',
         '#include <lttng/tracepoint-event.h>')
