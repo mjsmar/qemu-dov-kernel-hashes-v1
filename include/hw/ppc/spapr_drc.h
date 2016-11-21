@@ -131,6 +131,7 @@ typedef enum {
 } sPAPRDRCCResponse;
 
 typedef void (spapr_drc_detach_cb)(DeviceState *d, void *opaque);
+typedef bool (spapr_drc_migration_needed_cb)(void *opaque);
 
 typedef struct sPAPRDRConnector {
     /*< private >*/
@@ -159,6 +160,8 @@ typedef struct sPAPRDRConnector {
     DeviceState *dev;
     spapr_drc_detach_cb *detach_cb;
     void *detach_cb_opaque;
+    spapr_drc_migration_needed_cb *migration_needed_cb;
+    void *migration_needed_opaque;
 } sPAPRDRConnector;
 
 typedef struct sPAPRDRConnectorClass {
@@ -192,6 +195,19 @@ typedef struct sPAPRDRConnectorClass {
                    void *detach_cb_opaque, Error **errp);
     bool (*release_pending)(sPAPRDRConnector *drc);
     void (*set_signalled)(sPAPRDRConnector *drc);
+    /*
+     * Normally DRCs will be migrated automatically in any cases where
+     * there's a mismatch between the current DRC state vs. the default
+     * boot-time DRC state. In some cases factors outside of the DRC
+     * state itself might also affect whether or not a DRC should be
+     * migrated (e.g. older machine-types where DRC migration
+     * isn't supported/expected). For these cases this callback can be
+     * set to provide an additional check at migration time as to
+     * whether or not a particular DRC should be migrated.
+     */
+    void (*set_migration_needed_cb)(sPAPRDRConnector *drc,
+                                    spapr_drc_migration_needed_cb cb,
+                                    void *opaque);
 } sPAPRDRConnectorClass;
 
 sPAPRDRConnector *spapr_dr_connector_new(Object *owner,

@@ -702,6 +702,14 @@ static void spapr_dr_connector_instance_init(Object *obj)
                         NULL, NULL, NULL, NULL);
 }
 
+static void set_migration_needed_cb(sPAPRDRConnector *drc,
+                                    spapr_drc_migration_needed_cb *cb,
+                                    void *opaque)
+{
+    drc->migration_needed_cb = cb;
+    drc->migration_needed_opaque = opaque;
+}
+
 static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
 {
     DeviceClass *dk = DEVICE_CLASS(k);
@@ -723,6 +731,7 @@ static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
     drck->detach = detach;
     drck->release_pending = release_pending;
     drck->set_signalled = set_signalled;
+    drck->set_migration_needed_cb = set_migration_needed_cb;
 
     /*
      * Reason: it crashes FIXME find and document the real reason

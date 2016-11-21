@@ -1698,6 +1698,13 @@ static void spapr_drc_reset(void *opaque)
     }
 }
 
+static bool spapr_lmb_drc_migration_needed(void *opaque)
+{
+    sPAPRMachineState *spapr = opaque;
+
+    return spapr_ovec_test(spapr->ov5_cas, OV5_HP_EVT);
+}
+
 static void spapr_create_lmb_dr_connectors(sPAPRMachineState *spapr)
 {
     MachineState *machine = MACHINE(spapr);
@@ -1707,12 +1714,16 @@ static void spapr_create_lmb_dr_connectors(sPAPRMachineState *spapr)
 
     for (i = 0; i < nr_lmbs; i++) {
         sPAPRDRConnector *drc;
+        sPAPRDRConnectorClass *drck;
         uint64_t addr;
 
         addr = i * lmb_size + spapr->hotplug_memory.base;
         drc = spapr_dr_connector_new(OBJECT(spapr), SPAPR_DR_CONNECTOR_TYPE_LMB,
                                      addr/lmb_size);
         qemu_register_reset(spapr_drc_reset, drc);
+        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
+        drck->set_migration_needed_cb(drc, spapr_lmb_drc_migration_needed,
+                                      spapr);
     }
 }
 
