@@ -556,6 +556,12 @@ int register_savevm_live(DeviceState *dev,
         se->is_ram = 1;
     }
 
+    if (dev && instance_id != -1) {
+        char *id = qdev_get_dev_path(dev);
+        error_report("savevm: compat device, name: %s, path: %s, idstr: %s, instance_id: %d",
+                     dev->id ? dev->id : "null", id ? id : "null", idstr ? idstr : "null", instance_id);
+    }
+
     if (dev && instance_id == -1) {
         char *id = qdev_get_dev_path(dev);
         if (id) {
@@ -639,6 +645,14 @@ int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
     se->opaque = opaque;
     se->vmsd = vmsd;
     se->alias_id = alias_id;
+
+    if (dev && instance_id != -1) {
+        char *id = qdev_get_dev_path(dev);
+        if (strncmp(vmsd->name, "spapr_drc", strlen("spapr_drc")) != 0) {
+            error_report("vmstate: compat device, name: %s, path: %s, vmsd: %s, instance_id: %d",
+                         dev->id ? dev->id : "null", id ? id : "null", vmsd->name ? vmsd->name : "null", instance_id);
+        }
+    }
 
     if (dev && instance_id == -1) {
         char *id = qdev_get_dev_path(dev);
