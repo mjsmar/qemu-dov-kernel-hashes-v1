@@ -581,6 +581,16 @@ static void realize(DeviceState *d, Error **errp)
     if (err) {
         error_report_err(err);
         object_unref(OBJECT(drc));
+    } else {
+        /* this relies on the existing registration behavior that bus-less
+         * devices do not use a qdev-generated id/path for migration. If
+         * this ever changes, we will need a way to maintain manual control
+         * over the migration identifier if we want to maintain backward
+         * migration compatibility
+         */
+        g_assert_null(qdev_get_dev_path(DEVICE(drc)));
+        vmstate_register(DEVICE(drc), drck->get_index(drc),
+                         &vmstate_spapr_drc, drc);
     }
     g_free(child_name);
     trace_spapr_drc_realize_complete(drck->get_index(drc));
@@ -595,6 +605,7 @@ static void unrealize(DeviceState *d, Error **errp)
     Error *err = NULL;
 
     trace_spapr_drc_unrealize(drck->get_index(drc));
+    vmstate_unregister(DEVICE(drc), &vmstate_spapr_drc, drc);
     root_container = container_get(object_get_root(), DRC_CONTAINER_PATH);
     snprintf(name, sizeof(name), "%x", drck->get_index(drc));
     object_property_del(root_container, name, &err);
@@ -699,7 +710,6 @@ static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
     dk->reset = reset;
     dk->realize = realize;
     dk->unrealize = unrealize;
-    dk->vmsd = &vmstate_spapr_drc;
     drck->set_isolation_state = set_isolation_state;
     drck->set_indicator_state = set_indicator_state;
     drck->set_allocation_state = set_allocation_state;
