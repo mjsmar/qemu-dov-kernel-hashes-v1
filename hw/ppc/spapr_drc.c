@@ -691,19 +691,6 @@ static void spapr_dr_connector_instance_init(Object *obj)
                         NULL, NULL, NULL, NULL);
 }
 
-/* detach_cb needs be set since it is not migrated */
-static void postmigrate_set_detach_cb(sPAPRDRConnector *drc,
-                                      spapr_drc_detach_cb *detach_cb)
-{
-    drc->detach_cb = detach_cb;
-}
-
-/* return the unique drc index as instance_id for qom interfaces*/
-static int get_instance_id(DeviceState *dev)
-{
-    return (int)get_index(SPAPR_DR_CONNECTOR(OBJECT(dev)));
-}
-
 static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
 {
     DeviceClass *dk = DEVICE_CLASS(k);
@@ -713,7 +700,6 @@ static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
     dk->realize = realize;
     dk->unrealize = unrealize;
     dk->vmsd = &vmstate_spapr_drc;
-    dk->dev_get_instance_id = get_instance_id;
     drck->set_isolation_state = set_isolation_state;
     drck->set_indicator_state = set_indicator_state;
     drck->set_allocation_state = set_allocation_state;
@@ -727,7 +713,6 @@ static void spapr_dr_connector_class_init(ObjectClass *k, void *data)
     drck->detach = detach;
     drck->release_pending = release_pending;
     drck->set_signalled = set_signalled;
-    drck->postmigrate_set_detach_cb = postmigrate_set_detach_cb;
 
     /*
      * Reason: it crashes FIXME find and document the real reason
