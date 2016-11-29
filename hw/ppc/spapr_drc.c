@@ -58,6 +58,7 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
 
     trace_spapr_drc_set_isolation_state(get_index(drc), state);
 
+    error_report("isolation state marker 0");
     if (state == SPAPR_DR_ISOLATION_STATE_UNISOLATED) {
         /* cannot unisolate a non-existant resource, and, or resources
          * which are in an 'UNUSABLE' allocation state. (PAPR 2.7, 13.5.3.5)
@@ -78,6 +79,7 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
      * If the LMB being removed doesn't belong to a DIMM device that is
      * actually being unplugged, fail the isolation request here.
      */
+    error_report("isolation state marker 1");
     if (drc->type == SPAPR_DR_CONNECTOR_TYPE_LMB) {
         if ((state == SPAPR_DR_ISOLATION_STATE_ISOLATED) &&
              !drc->awaiting_release) {
@@ -87,7 +89,9 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
 
     drc->isolation_state = state;
 
+    error_report("isolation state marker 2");
     if (drc->isolation_state == SPAPR_DR_ISOLATION_STATE_ISOLATED) {
+        error_report("isolation state marker 3");
         /* if we're awaiting release, but still in an unconfigured state,
          * it's likely the guest is still in the process of configuring
          * the device and is transitioning the devices to an ISOLATED
@@ -98,10 +102,12 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
          */
         if (drc->awaiting_release) {
             if (drc->configured) {
+                error_report("isolation state marker 4");
                 trace_spapr_drc_set_isolation_state_finalizing(get_index(drc));
                 drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                              drc->detach_cb_opaque, NULL);
             } else {
+                error_report("isolation state marker 5");
                 trace_spapr_drc_set_isolation_state_deferring(get_index(drc));
             }
         }
@@ -126,6 +132,7 @@ static uint32_t set_allocation_state(sPAPRDRConnector *drc,
 
     trace_spapr_drc_set_allocation_state(get_index(drc), state);
 
+    error_report("allocation state marker 0");
     if (state == SPAPR_DR_ALLOCATION_STATE_USABLE) {
         /* if there's no resource/device associated with the DRC, there's
          * no way for us to put it in an allocation state consistent with
@@ -137,14 +144,18 @@ static uint32_t set_allocation_state(sPAPRDRConnector *drc,
         }
     }
 
+    error_report("allocation state marker 1");
     if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI) {
         drc->allocation_state = state;
+        error_report("allocation state marker 2");
         if (drc->awaiting_release &&
             drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
+            error_report("allocation state marker 3");
             trace_spapr_drc_set_allocation_state_finalizing(get_index(drc));
             drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                          drc->detach_cb_opaque, NULL);
         } else if (drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_USABLE) {
+            error_report("allocation state marker 4");
             drc->awaiting_allocation = false;
         }
     }
