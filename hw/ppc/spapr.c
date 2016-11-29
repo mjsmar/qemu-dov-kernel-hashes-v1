@@ -2366,7 +2366,9 @@ static void spapr_lmb_release(DeviceState *dev, void *opaque)
     sPAPRDIMMState *ds = (sPAPRDIMMState *)opaque;
     HotplugHandler *hotplug_ctrl;
 
+    error_report("LMB RELEASE ENTER");
     if (--ds->nr_lmbs) {
+        error_report("LMB RELEASE EXIT, %d remaining", ds->nr_lmbs);
         return;
     }
 
@@ -2376,6 +2378,7 @@ static void spapr_lmb_release(DeviceState *dev, void *opaque)
      * Now that all the LMBs have been removed by the guest, call the
      * pc-dimm unplug handler to cleanup up the pc-dimm device.
      */
+    error_report("LMB RELEASE COMPLETED, COMMENCING UNPLUG");
     hotplug_ctrl = qdev_get_hotplug_handler(dev);
     hotplug_handler_unplug(hotplug_ctrl, dev, &error_abort);
 }
@@ -2417,7 +2420,9 @@ static void spapr_memory_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
     PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
     MemoryRegion *mr = ddc->get_memory_region(dimm);
 
+    error_report("UNPLUGGING DIMM %s", DEVICE(dimm)->id);
     pc_dimm_memory_unplug(dev, &ms->hotplug_memory, mr);
+    error_report("UNPARENTING DIMM %s", DEVICE(dimm)->id);
     object_unparent(OBJECT(dev));
 }
 
@@ -2431,6 +2436,7 @@ static void spapr_memory_unplug_request(HotplugHandler *hotplug_dev,
     uint64_t size = memory_region_size(mr);
     uint64_t addr;
 
+    error_report("UNPLUG REQUEST FOR DIMM %s", DEVICE(dimm)->id);
     addr = object_property_get_int(OBJECT(dimm), PC_DIMM_ADDR_PROP, &local_err);
     if (local_err) {
         goto out;

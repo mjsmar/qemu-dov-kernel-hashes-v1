@@ -28,6 +28,7 @@
 #include "sysemu/kvm.h"
 #include "trace.h"
 #include "hw/virtio/vhost.h"
+#include "qemu/error-report.h"
 
 typedef struct pc_dimms_capacity {
      uint64_t size;
@@ -416,6 +417,7 @@ static void pc_dimm_realize(DeviceState *dev, Error **errp)
         ddc->realize(dimm, errp);
     }
 
+    error_report("setting DEVICE(dimm)->id %s to mapped", DEVICE(dimm)->id);
     host_memory_backend_set_mapped(dimm->hostmem, true);
 }
 
@@ -423,6 +425,7 @@ static void pc_dimm_unrealize(DeviceState *dev, Error **errp)
 {
     PCDIMMDevice *dimm = PC_DIMM(dev);
 
+    error_report("setting DEVICE(dimm)->id %s to unmapped", DEVICE(dimm)->id);
     host_memory_backend_set_mapped(dimm->hostmem, false);
 }
 
