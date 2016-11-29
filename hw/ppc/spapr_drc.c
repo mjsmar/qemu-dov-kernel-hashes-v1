@@ -237,6 +237,7 @@ static uint32_t entity_sense(sPAPRDRConnector *drc, sPAPRDREntitySense *state)
     }
 
     trace_spapr_drc_entity_sense(get_index(drc), *state);
+    error_report("drc %x: entity sense: %x", get_index(drc), *state);
     return RTAS_OUT_SUCCESS;
 }
 
