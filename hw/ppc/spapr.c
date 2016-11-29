@@ -2395,6 +2395,7 @@ static void spapr_del_lmbs(DeviceState *dev, uint64_t addr_start, uint64_t size,
 
     ds->nr_lmbs = nr_lmbs;
     for (i = 0; i < nr_lmbs; i++) {
+        error_report("UNPLUG REQUEST FOR LMB ADDR 0x%lx", addr);
         drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
                 addr / SPAPR_MEMORY_BLOCK_SIZE);
         g_assert(drc);
