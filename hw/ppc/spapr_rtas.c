@@ -426,6 +426,8 @@ static void rtas_set_indicator(PowerPCCPU *cpu, sPAPRMachineState *spapr,
         goto out_unimplemented;
     }
 
+    error_report("RTAS set indicator called for %x, sensor_type: %x, sensor_state: %x",
+                 sensor_index, sensor_type, sensor_state);
     /* if this is a DR sensor we can assume sensor_index == drc_index */
     drc = spapr_dr_connector_by_index(sensor_index);
     if (!drc) {
