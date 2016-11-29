@@ -5,6 +5,7 @@
 #include "qapi-visit.h"
 #include "qapi/qobject-output-visitor.h"
 #include "qapi/opts-visitor.h"
+#include "qemu/error-report.h"
 
 void user_creatable_complete(Object *obj, Error **errp)
 {
@@ -209,6 +210,7 @@ void user_creatable_del(const char *id, Error **errp)
         error_setg(errp, "object '%s' is in use, can not be deleted", id);
         return;
     }
+    error_report("unparenting object %s, current ref count: %d", id, obj->ref);
     object_unparent(obj);
 }
 
