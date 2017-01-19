@@ -18,7 +18,7 @@
 #include "qemu/error-report.h"
 #include <libfdt.h>
 
-/* #define DEBUG_SPAPR_OVEC */
+#define DEBUG_SPAPR_OVEC
 
 #ifdef DEBUG_SPAPR_OVEC
 #define DPRINTFN(fmt, ...) \
