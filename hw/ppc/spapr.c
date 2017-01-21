@@ -676,6 +676,11 @@ static int spapr_dt_cas_updates(sPAPRMachineState *spapr, void *fdt,
             return offset;
         }
     }
+
+    /* FIXME: for testing, we encode this unconditionally */
+    //if (spapr->test_assign_bars) {
+        spapr_ovec_set(spapr->ov5_cas, OV5_HP_MULTISLOT);
+    //}
     ret = spapr_ovec_populate_dt(fdt, offset, spapr->ov5_cas,
                                  "ibm,architecture-vec-5");
 

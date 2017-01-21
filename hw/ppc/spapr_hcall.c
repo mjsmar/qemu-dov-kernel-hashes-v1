@@ -1000,6 +1000,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
      * if capabilities have since been removed, generate another reset
      */
     ov5_updates = spapr_ovec_new();
+    spapr_ovec_set(spapr->ov5_cas, OV5_HP_MULTISLOT);
     spapr->cas_reboot = spapr_ovec_diff(ov5_updates,
                                         ov5_cas_old, spapr->ov5_cas);
 

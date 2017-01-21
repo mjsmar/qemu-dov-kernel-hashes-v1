@@ -1765,6 +1765,10 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     }
 
     sphb->msi = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_free);
+
+    if (sphb->assign_bars) {
+        spapr->test_assign_bars = true;
+    }
 }
 
 static int spapr_phb_children_reset(Object *child, void *opaque)
