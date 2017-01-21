@@ -165,6 +165,7 @@ struct sPAPRMachineState {
      * CAS capability, or guests that don't support generic PCI rescan.
      */
     bool preassign_pci_bars;
+    bool use_modern_pci_hotplug;
 
     /*< public >*/
     char *kvm_type;

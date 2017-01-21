@@ -816,6 +816,13 @@ static int spapr_dt_cas_updates(sPAPRMachineState *spapr, void *fdt,
             return offset;
         }
     }
+
+    /* FIXME: HACK: we only do this here to allow force-enabling
+     * OV5_HP_MULTISLOT. Normally we'd rely on negotiated bits
+     */
+    if (spapr->preassign_pci_bars) {
+        spapr_ovec_set(spapr->ov5_cas, OV5_HP_MULTISLOT);
+    }
     ret = spapr_ovec_populate_dt(fdt, offset, spapr->ov5_cas,
                                  "ibm,architecture-vec-5");
 
@@ -2500,6 +2507,21 @@ static void spapr_machine_init(MachineState *machine)
         spapr_ovec_set(spapr->ov5, OV5_HPT_RESIZE);
     }
 
+    /* advertise support for RPAPHP-based hotplug if QEMU is handling
+     * BAR assignments. OV5_HP_MULTISLOT isn't the direct capability
+     * for this, but is only supported in kernels that have an in-kernel
+     * implementation of PCI hotplug, which in turn relies on a new version
+     * of RPAPHP module which is compatibile with QEMU PCI topologies.
+     * Such kernels are aware of previous incompatibility with RPAPHP
+     * and thus will not assume we're handling BAR assignments unless we
+     * negotiate OV5_HP_MULTISLOT. Therefore we can use OV5_HP_MULTISLOT
+     * as a reliable proxy both ways.
+     */
+    if (spapr->use_modern_pci_hotplug) {
+        g_assert(spapr->preassign_pci_bars); /* FIXME: check this earlier */
+        spapr_ovec_set(spapr->ov5, OV5_HP_MULTISLOT);
+    }
+
     /* init CPUs */
     spapr_init_cpus(spapr);
 
@@ -2916,6 +2938,21 @@ static void spapr_set_preassign_pci_bars(Object *obj, bool value,
     spapr->preassign_pci_bars = value;
 }
 
+static bool spapr_get_modern_pci_hotplug(Object *obj, Error **errp)
+{
+    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
+
+    return spapr->use_modern_pci_hotplug;
+}
+
+static void spapr_set_modern_pci_hotplug(Object *obj, bool value,
+                                         Error **errp)
+{
+    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
+
+    spapr->use_modern_pci_hotplug = value;
+}
+
 static void spapr_instance_init(Object *obj)
 {
     sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
@@ -2923,6 +2960,7 @@ static void spapr_instance_init(Object *obj)
     spapr->htab_fd = -1;
     spapr->use_hotplug_event_source = true;
     spapr->preassign_pci_bars = true;
+    spapr->use_modern_pci_hotplug = true;
     object_property_add_str(obj, "kvm-type",
                             spapr_get_kvm_type, spapr_set_kvm_type, NULL);
     object_property_set_description(obj, "kvm-type",
@@ -2963,6 +3001,17 @@ static void spapr_instance_init(Object *obj)
                                     " that advertise OV5_HP_MULTISLOT CAS"
                                     " capability, or guests that don't support"
                                     " generic PCI rescan. (required to support"
+                                    " EEH for hotplugged PCI passthrough"
+                                    " devices)",
+                                    NULL);
+    object_property_add_bool(obj, "modern-pci-hotplug",
+                            spapr_get_modern_pci_hotplug,
+                            spapr_set_modern_pci_hotplug,
+                            NULL);
+    object_property_set_description(obj, "modern-pci-hotplug",
+                                    " Use RPAPHP-based hotplug in guests"
+                                    " that advertise OV5_HP_MULTISLOT CAS"
+                                    " capability (required to support"
                                     " EEH for hotplugged PCI passthrough"
                                     " devices)",
                                     NULL);
@@ -4049,6 +4098,7 @@ static void spapr_machine_2_11_instance_options(MachineState *machine)
 
     spapr_machine_2_12_instance_options(machine);
     spapr->preassign_pci_bars = false;
+    spapr->use_modern_pci_hotplug = false;
 }
 
 static void spapr_machine_2_11_class_options(MachineClass *mc)
