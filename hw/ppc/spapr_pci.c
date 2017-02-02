@@ -960,6 +960,9 @@ static void populate_resource_props(PCIDevice *d, ResourceProps *rp)
         } else {
             reg->phys_hi |= cpu_to_be32(b_ss(2));
         }
+        if (d->io_regions[i].type & PCI_BASE_ADDRESS_MEM_PREFETCH) {
+            reg->phys_hi |= cpu_to_be32(b_p(1));
+        }
         reg->phys_mid = 0;
         reg->phys_lo = 0;
         reg->size_hi = cpu_to_be32(d->io_regions[i].size >> 32);
