@@ -1187,6 +1187,7 @@ static void ppc_spapr_reset(void)
     /* Check for unknown sysbus devices */
     foreach_dynamic_sysbus_device(find_unknown_sysbus_device, NULL);
 
+#if 0 /* conflict from tcg p9 mmu patchset */
     switch (first_ppc_cpu->env.mmu_model) {
     case POWERPC_MMU_3_00:
         /* Allocate the partition table */
@@ -1197,11 +1198,18 @@ static void ppc_spapr_reset(void)
                              spapr_hpt_shift_for_ramsize(machine->maxram_size),
                              &error_fatal);
     }
+#endif
+    if (!kvmppc_has_cap_mmu_radix()) {
+        /* Allocate and/or reset the hash page table */
+        spapr_reallocate_hpt(spapr,
+                         spapr_hpt_shift_for_ramsize(machine->maxram_size),
+                         &error_fatal);
 
-    /* Update the RMA size if necessary */
-    if (spapr->vrma_adjust) {
-        spapr->rma_size = kvmppc_rma_size(spapr_node0_size(),
-                                          spapr->htab_shift);
+        /* Update the RMA size if necessary */
+        if (spapr->vrma_adjust) {
+            spapr->rma_size = kvmppc_rma_size(spapr_node0_size(),
+                                              spapr->htab_shift);
+        }
     }
 
     qemu_devices_reset();
