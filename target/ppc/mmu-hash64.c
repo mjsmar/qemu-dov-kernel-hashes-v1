@@ -1040,8 +1040,8 @@ void helper_store_lpcr(CPUPPCState *env, target_ulong val)
     uint64_t lpcr = 0;
 
     /* Filter out bits */
-    switch (env->mmu_model) {
-    case POWERPC_MMU_64B: /* 970 */
+    switch (POWERPC_MMU_VER(env->mmu_model)) {
+    case POWERPC_MMU_VER_64B: /* 970 */
         if (val & 0x40) {
             lpcr |= LPCR_LPES0;
         }
@@ -1067,19 +1067,19 @@ void helper_store_lpcr(CPUPPCState *env, target_ulong val)
          * to dig HRMOR out of HID5
          */
         break;
-    case POWERPC_MMU_2_03: /* P5p */
+    case POWERPC_MMU_VER_2_03: /* P5p */
         lpcr = val & (LPCR_RMLS | LPCR_ILE |
                       LPCR_LPES0 | LPCR_LPES1 |
                       LPCR_RMI | LPCR_HDICE);
         break;
-    case POWERPC_MMU_2_06: /* P7 */
+    case POWERPC_MMU_VER_2_06: /* P7 */
         lpcr = val & (LPCR_VPM0 | LPCR_VPM1 | LPCR_ISL | LPCR_DPFD |
                       LPCR_VRMASD | LPCR_RMLS | LPCR_ILE |
                       LPCR_P7_PECE0 | LPCR_P7_PECE1 | LPCR_P7_PECE2 |
                       LPCR_MER | LPCR_TC |
                       LPCR_LPES0 | LPCR_LPES1 | LPCR_HDICE);
         break;
-    case POWERPC_MMU_2_07: /* P8 */
+    case POWERPC_MMU_VER_2_07: /* P8 */
         lpcr = val & (LPCR_VPM0 | LPCR_VPM1 | LPCR_ISL | LPCR_KBV |
                       LPCR_DPFD | LPCR_VRMASD | LPCR_RMLS | LPCR_ILE |
                       LPCR_AIL | LPCR_ONL | LPCR_P8_PECE0 | LPCR_P8_PECE1 |
