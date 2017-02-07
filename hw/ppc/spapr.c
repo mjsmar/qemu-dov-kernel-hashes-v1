@@ -1182,15 +1182,17 @@ static void ppc_spapr_reset(void)
 
     spapr->patb_entry = 0;
 
-    /* Allocate and/or reset the hash page table */
-    spapr_reallocate_hpt(spapr,
-                         spapr_hpt_shift_for_ramsize(machine->maxram_size),
-                         &error_fatal);
+    if (!kvmppc_has_cap_mmu_radix()) {
+        /* Allocate and/or reset the hash page table */
+        spapr_reallocate_hpt(spapr,
+                             spapr_hpt_shift_for_ramsize(machine->maxram_size),
+                             &error_fatal);
 
-    /* Update the RMA size if necessary */
-    if (spapr->vrma_adjust) {
-        spapr->rma_size = kvmppc_rma_size(spapr_node0_size(),
-                                          spapr->htab_shift);
+        /* Update the RMA size if necessary */
+        if (spapr->vrma_adjust) {
+            spapr->rma_size = kvmppc_rma_size(spapr_node0_size(),
+                                              spapr->htab_shift);
+        }
     }
 
     qemu_devices_reset();
