@@ -1017,6 +1017,50 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
     return H_SUCCESS;
 }
 
+static target_ulong h_register_process_table(PowerPCCPU *cpu,
+                                             sPAPRMachineState *spapr,
+                                             target_ulong opcode,
+                                             target_ulong *args)
+{
+    static target_ulong last_process_table;
+    target_ulong flags = args[0];
+    target_ulong proc_tbl = args[1];
+    target_ulong page_size = args[2];
+    target_ulong table_size = args[3];
+    uint64_t cflags, cproc;
+
+    cflags = (flags & 4) ? KVM_PPC_MMUV3_RADIX : 0;
+    cflags |= (flags & 1) ? KVM_PPC_MMUV3_GTSE : 0;
+    cproc = (flags & 4) ? (1ul << 63) : 0;
+    if (!(flags & 0x10)) {
+        if ((last_process_table & (1ul << 63)) != cproc) {
+            return H_PARAMETER;
+        }
+        cproc = last_process_table;
+    } else if (!(flags & 0x8)) {
+        ; /* do nothing */
+    } else if (flags & 4) {
+        /* radix */
+        if (table_size > 24 || (proc_tbl & 0xfff) || (proc_tbl >> 60)) {
+            return H_PARAMETER;
+        }
+        cproc |= proc_tbl | table_size;
+    } else {
+        /* hash, possibly with process table */
+        if (table_size > 24 || (proc_tbl >> 38) || page_size > 7) {
+            return H_PARAMETER;
+        }
+        cproc = (proc_tbl << 25) | (page_size << 5) | table_size;
+    }
+    last_process_table = cproc;
+    fprintf(stderr, "calling config mmu flags=%lx proctbl=%lx\n",
+            cflags, cproc);
+    if  (!kvmppc_configure_v3_mmu(cpu, cflags, cproc)) {
+        return H_HARDWARE;
+    }
+    return H_SUCCESS;
+}
+
 static spapr_hcall_fn papr_hypercall_table[(MAX_HCALL_OPCODE / 4) + 1];
 static spapr_hcall_fn kvmppc_hypercall_table[KVMPPC_HCALL_MAX - KVMPPC_HCALL_BASE + 1];
 
@@ -1105,6 +1149,10 @@ static void hypercall_register_types(void)
 
     /* ibm,client-architecture-support support */
     spapr_register_hypercall(KVMPPC_H_CAS, h_client_architecture_support);
+
+    /* Power9 MMU support */
+    spapr_register_hypercall(H_REGISTER_PROCESS_TABLE,
+                             h_register_process_table);
 }
 
 type_init(hypercall_register_types)
