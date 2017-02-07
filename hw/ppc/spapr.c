@@ -1962,6 +1962,14 @@ static void ppc_spapr_init(MachineState *machine)
     }
 
     spapr_ovec_set(spapr->ov5, OV5_FORM1_AFFINITY);
+    if (kvmppc_has_cap_mmu_radix()) {
+        spapr_ovec_set(spapr->ov5, OV5_MMU_RADIX);
+    }
+    if (kvmppc_has_cap_mmu_hash()) {
+        spapr_ovec_set(spapr->ov5, OV5_MMU_HASH);
+    }
+    spapr_ovec_set(spapr->ov5, OV5_SEG_HCALL);
+    spapr_ovec_set(spapr->ov5, OV5_SHOOTDOWN);
 
     /* advertise support for dedicated HP event source to guests */
     if (spapr->use_hotplug_event_source) {
