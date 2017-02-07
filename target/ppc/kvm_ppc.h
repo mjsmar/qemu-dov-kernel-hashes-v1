@@ -56,6 +56,8 @@ void kvmppc_hash64_write_pte(CPUPPCState *env, target_ulong pte_index,
                              target_ulong pte0, target_ulong pte1);
 bool kvmppc_has_cap_fixup_hcalls(void);
 bool kvmppc_has_cap_htm(void);
+bool kvmppc_has_cap_mmu_radix(void);
+bool kvmppc_has_cap_mmu_hash(void);
 int kvmppc_enable_hwrng(void);
 int kvmppc_put_books_sregs(PowerPCCPU *cpu);
 PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void);
@@ -251,6 +253,16 @@ static inline bool kvmppc_has_cap_fixup_hcalls(void)
 }
 
 static inline bool kvmppc_has_cap_htm(void)
+{
+    return false;
+}
+
+static inline bool kvmppc_has_cap_mmu_radix(void)
+{
+    return false;
+}
+
+static inline bool kvmppc_has_cap_mmu_hash(void)
 {
     return false;
 }
