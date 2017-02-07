@@ -329,6 +329,18 @@ static void kvm_get_smmu_info(PowerPCCPU *cpu, struct kvm_ppc_smmu_info *info)
     kvm_get_fallback_smmu_info(cpu, info);
 }
 
+static bool kvm_get_rmmu_info(PowerPCCPU *cpu, struct kvm_ppc_rmmu_info *info)
+{
+    CPUState *cs = CPU(cpu);
+    int ret;
+
+    if (kvm_check_extension(cs->kvm_state, KVM_CAP_PPC_MMU_RADIX)) {
+        ret = kvm_vm_ioctl(cs->kvm_state, KVM_PPC_GET_RMMU_INFO, info);
+        return (ret == 0);
+    }
+    return false;
+}
+
 static long gethugepagesize(const char *mem_path)
 {
     struct statfs fs;
@@ -442,9 +454,11 @@ static void kvm_fixup_page_sizes(PowerPCCPU *cpu)
 {
     static struct kvm_ppc_smmu_info smmu_info;
     static bool has_smmu_info;
+    static struct kvm_ppc_rmmu_info rmmu_info;
+    static bool has_rmmu_info;
     CPUPPCState *env = &cpu->env;
     long rampagesize;
-    int iq, ik, jq, jk;
+    int iq, ik, jq, jk, i;
     bool has_64k_pages = false;
 
     /* We only handle page sizes for 64-bit server guests for now */
@@ -509,6 +523,22 @@ static void kvm_fixup_page_sizes(PowerPCCPU *cpu)
     if (!has_64k_pages) {
         env->mmu_model &= ~POWERPC_MMU_64K;
     }
+
+    /* Collect radix page info from kernel if not already */
+    if (!has_rmmu_info) {
+        env->radix_page_info.count = 0;
+        if (kvm_get_rmmu_info(cpu, &rmmu_info)) {
+            for (i = 0; i < 8; i++) {
+                if (rmmu_info.ap_encodings[i]) {
+                    env->radix_page_info.entries[i] =
+                        cpu_to_be32(rmmu_info.ap_encodings[i]);
+                    env->radix_page_info.count++;
+                }
+            }
+        }
+        has_rmmu_info = true;
+    }
+
 }
 #else /* defined (TARGET_PPC64) */
 

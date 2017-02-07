@@ -514,6 +514,13 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
     _FDT(spapr_fixup_cpu_numa_dt(fdt, offset, cs));
 
     _FDT(spapr_fixup_cpu_smt_dt(fdt, offset, cpu, compat_smt));
+
+    if (env->radix_page_info.count) {
+        _FDT((fdt_setprop(fdt, offset, "ibm,processor-radix-AP-encodings",
+                          env->radix_page_info.entries,
+                          env->radix_page_info.count *
+                          sizeof(env->radix_page_info.entries[0]))));
+    }
 }
 
 static void spapr_populate_cpus_dt_node(void *fdt, sPAPRMachineState *spapr)
