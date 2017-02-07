@@ -47,6 +47,12 @@ typedef struct sPAPROptionVector sPAPROptionVector;
 #define OV5_DRCONF_MEMORY       OV_BIT(2, 2)
 #define OV5_FORM1_AFFINITY      OV_BIT(5, 0)
 #define OV5_HP_EVT              OV_BIT(6, 5)
+#define OV5_INT_ARCH_LVL        OV_BIT(23, 7)
+#define OV5_MMU_RADIX           OV_BIT(24, 0)
+#define OV5_MMU_HASH            OV_BIT(24, 1)
+#define OV5_SEG_RADIX           OV_BIT(24, 2)
+#define OV5_SEG_HCALL           OV_BIT(24, 3)
+#define OV5_SHOOTDOWN           OV_BIT(24, 4)
 
 /* interfaces */
 sPAPROptionVector *spapr_ovec_new(void);
