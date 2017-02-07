@@ -9982,10 +9982,13 @@ static gint ppc_cpu_compare_class_pvr_mask(gconstpointer a, gconstpointer b)
         return -1;
     }
 
+    g_print("pvr: %x, checking class: %s ... ", pvr, DEVICE_CLASS(pcc)->fw_name);
     if (pcc->pvr_match(pcc, pvr)) {
+        g_print("matched\n");
         return 0;
     }
 
+    g_print("not matched\n");
     return -1;
 }
 
@@ -10001,6 +10004,7 @@ PowerPCCPUClass *ppc_cpu_class_by_pvr_mask(uint32_t pvr)
     }
     g_slist_free(list);
 
+    g_print("selected CPU class: %s\n", pcc ? DEVICE_CLASS(pcc)->fw_name : "no matches");
     return pcc;
 }
 
