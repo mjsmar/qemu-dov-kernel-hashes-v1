@@ -1002,6 +1002,8 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
     ov5_updates = spapr_ovec_new();
     spapr->cas_reboot = spapr_ovec_diff(ov5_updates,
                                         ov5_cas_old, spapr->ov5_cas);
+    spapr->cas_legacy_guest_workaround = !spapr_ovec_test(ov5_updates, OV5_MMU_RADIX) &&
+                                         !spapr_ovec_test(ov5_updates, OV5_MMU_HASH);
 
     if (!spapr->cas_reboot) {
         spapr->cas_reboot =
@@ -1029,8 +1031,12 @@ static target_ulong h_register_process_table(PowerPCCPU *cpu,
     target_ulong table_size = args[3];
     uint64_t cflags, cproc;
 
+#ifdef CONFIG_KVM
     cflags = (flags & 4) ? KVM_PPC_MMUV3_RADIX : 0;
     cflags |= (flags & 1) ? KVM_PPC_MMUV3_GTSE : 0;
+#else
+    cflags = 0;
+#endif
     cproc = (flags & 4) ? (1ul << 63) : 0;
     if (!(flags & 0x10)) {
         if ((last_process_table & (1ul << 63)) != cproc) {
