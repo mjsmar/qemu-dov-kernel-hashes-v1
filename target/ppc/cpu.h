@@ -935,6 +935,10 @@ struct ppc_segment_page_sizes {
     struct ppc_one_seg_page_size sps[PPC_PAGE_SIZES_MAX_SZ];
 };
 
+struct ppc_radix_page_info {
+    uint32_t count;
+    uint32_t entries[PPC_PAGE_SIZES_MAX_SZ];
+};
 
 /*****************************************************************************/
 /* The whole PowerPC CPU context */
@@ -1076,6 +1080,7 @@ struct CPUPPCState {
     ppc_slb_t vrma_slb;
     target_ulong rmls;
     bool ci_large_pages;
+    struct ppc_radix_page_info radix_page_info;
 #endif
 
 #if defined(TARGET_PPC64) && !defined(CONFIG_USER_ONLY)
