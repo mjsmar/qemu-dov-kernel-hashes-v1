@@ -195,6 +195,76 @@ static int spapr_fixup_cpu_numa_dt(void *fdt, int offset, CPUState *cs)
     return ret;
 }
 
+/* Populate the "ibm,pa-features" property */
+static int spapr_populate_pa_features(CPUPPCState *env, void *fdt, int offset,
+                                      bool legacy_guest)
+{
+    uint8_t pa_features_206[] = { 6, 0,
+        0xf6, 0x1f, 0xc7, 0x00, 0x80, 0xc0 };
+    uint8_t pa_features_207[] = { 24, 0,
+        0xf6, 0x1f, 0xc7, 0xc0, 0x80, 0xf0,
+        0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x80, 0x00,
+        0x80, 0x00, 0x80, 0x00, 0x00, 0x00 };
+    uint8_t pa_features_300[70 + 2] = { 70, 0,
+        0xf6, 0x3f, 0xc7, 0xc0, 0x80, 0xf0, /* 0 - 5 */
+        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, /* 6 - 11 */
+        0x00, 0x00, 0x00, 0x00, 0x80, 0x00, /* 12 - 17 */
+        0x80, 0x00, 0x80, 0x00, 0x80, 0x00, /* 18 - 23 */
+        0x80, 0x00, 0x80, 0x00, 0x80, 0x00, /* 24 - 29 */
+        0x80, 0x00, 0x80, 0x00, 0xC0, 0x00, /* 30 - 35 */
+        0x80, 0x00, 0x80, 0x00, 0x80, 0x00, /* 36 - 41 */
+        0x80, 0x00, 0x80, 0x00, 0x80, 0x00, /* 42 - 47 */
+        0x80, 0x00, 0x80, 0x00, 0x80, 0x00, /* 48 - 53 */
+        0x80, 0x00, 0x80, 0x00, 0x80, 0x00, /* 54 - 59 */
+        0x80, 0x00, 0x80, 0x00, 0x00, 0x00, /* 60 - 64 */
+        0x00, 0x00, 0x00, 0x00,             /* 66 - 69 */
+        };
+    uint8_t *pa_features;
+    size_t pa_size;
+
+    switch (env->mmu_model) {
+    case POWERPC_MMU_2_06:
+    case POWERPC_MMU_2_06a:
+        pa_features = pa_features_206;
+        pa_size = sizeof(pa_features_206);
+        break;
+    case POWERPC_MMU_2_07:
+    case POWERPC_MMU_2_07a:
+        pa_features = pa_features_207;
+        pa_size = sizeof(pa_features_207);
+        break;
+    case POWERPC_MMU_3_00:
+        pa_features = pa_features_300;
+        pa_size = sizeof(pa_features_300);
+        break;
+    default:
+        return 0; /* TODO, this is actually an error! */
+    }
+
+    if (env->ci_large_pages) {
+        /*
+         * Note: we keep CI large pages off by default because a 64K capable
+         * guest provisioned with large pages might otherwise try to map a qemu
+         * framebuffer (or other kind of memory mapped PCI BAR) using 64K pages
+         * even if that qemu runs on a 4k host.
+         * We dd this bit back here if we are confident this is not an issue
+         */
+        pa_features[3] |= 0x20;
+    }
+    if (kvmppc_has_cap_htm() && pa_size > 24) {
+        pa_features[24] |= 0x80;    /* Transactional memory support */
+    }
+    if (legacy_guest && pa_size > 40) {
+        /* Workaround for broken kernels that attempt (guest) radix
+         * mode when they can't handle it, if they see the radix bit set
+         * in pa-features. So hide it from them. */
+        pa_features[40 + 2] &= ~0x80; /* Radix MMU */
+    }
+
+    return fdt_setprop(fdt, offset, "ibm,pa-features", pa_features, pa_size);
+}
+
 static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
 {
     int ret = 0, offset, cpus_offset;
@@ -205,6 +275,7 @@ static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
 
     CPU_FOREACH(cs) {
         PowerPCCPU *cpu = POWERPC_CPU(cs);
+        CPUPPCState *env = &cpu->env;
         DeviceClass *dc = DEVICE_GET_CLASS(cs);
         int index = ppc_get_vcpu_dt_id(cpu);
         int compat_smt = MIN(smp_threads, ppc_compat_max_threads(cpu));
@@ -243,6 +314,12 @@ static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
         }
 
         ret = spapr_fixup_cpu_smt_dt(fdt, offset, cpu, compat_smt);
+        if (ret < 0) {
+            return ret;
+        }
+
+        ret = spapr_populate_pa_features(env, fdt, offset,
+                                         spapr->cas_legacy_guest_workaround);
         if (ret < 0) {
             return ret;
         }
@@ -347,69 +424,6 @@ static int spapr_populate_memory(sPAPRMachineState *spapr, void *fdt)
     return 0;
 }
 
-/* Populate the "ibm,pa-features" property */
-static void spapr_populate_pa_features(CPUPPCState *env, void *fdt, int offset)
-{
-    uint8_t pa_features_206[] = { 6, 0,
-        0xf6, 0x1f, 0xc7, 0x00, 0x80, 0xc0 };
-    uint8_t pa_features_207[] = { 24, 0,
-        0xf6, 0x1f, 0xc7, 0xc0, 0x80, 0xf0,
-        0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x80, 0x00,
-        0x80, 0x00, 0x80, 0x00, 0x00, 0x00 };
-    /* Currently we don't advertise any of the "new" ISAv3.00 functionality */
-    uint8_t pa_features_300[] = { 64, 0,
-        0xf6, 0x1f, 0xc7, 0xc0, 0x80, 0xf0, /*  0 -  5 */
-        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, /*  6 - 11 */
-        0x00, 0x00, 0x00, 0x00, 0x80, 0x00, /* 12 - 17 */
-        0x80, 0x00, 0x80, 0x00, 0x00, 0x00, /* 18 - 23 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 24 - 29 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 30 - 35 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 36 - 41 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 42 - 47 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 48 - 53 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 54 - 59 */
-        0x00, 0x00, 0x00, 0x00           }; /* 60 - 63 */
-
-    uint8_t *pa_features;
-    size_t pa_size;
-
-    switch (env->mmu_model) {
-    case POWERPC_MMU_2_06:
-    case POWERPC_MMU_2_06a:
-        pa_features = pa_features_206;
-        pa_size = sizeof(pa_features_206);
-        break;
-    case POWERPC_MMU_2_07:
-    case POWERPC_MMU_2_07a:
-        pa_features = pa_features_207;
-        pa_size = sizeof(pa_features_207);
-        break;
-    case POWERPC_MMU_3_00:
-        pa_features = pa_features_300;
-        pa_size = sizeof(pa_features_300);
-        break;
-    default:
-        return;
-    }
-
-    if (env->ci_large_pages) {
-        /*
-         * Note: we keep CI large pages off by default because a 64K capable
-         * guest provisioned with large pages might otherwise try to map a qemu
-         * framebuffer (or other kind of memory mapped PCI BAR) using 64K pages
-         * even if that qemu runs on a 4k host.
-         * We dd this bit back here if we are confident this is not an issue
-         */
-        pa_features[3] |= 0x20;
-    }
-    if (kvmppc_has_cap_htm() && pa_size > 24) {
-        pa_features[24] |= 0x80;    /* Transactional memory support */
-    }
-
-    _FDT((fdt_setprop(fdt, offset, "ibm,pa-features", pa_features, pa_size)));
-}
-
 static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
                                   sPAPRMachineState *spapr)
 {
@@ -504,7 +518,7 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
                           page_sizes_prop, page_sizes_prop_size)));
     }
 
-    spapr_populate_pa_features(env, fdt, offset);
+    _FDT(spapr_populate_pa_features(env, fdt, offset, false));
 
     _FDT((fdt_setprop_cell(fdt, offset, "ibm,chip-id",
                            cs->cpu_index / vcpus_per_socket)));
@@ -729,7 +743,9 @@ int spapr_h_cas_compose_response(sPAPRMachineState *spapr,
     g_free(fdt_skel);
 
     /* Fixup cpu nodes */
-    _FDT((spapr_fixup_cpu_dt(fdt, spapr)));
+    if (!spapr->cas_legacy_guest_workaround) {
+        _FDT((spapr_fixup_cpu_dt(fdt, spapr)));
+    }
 
     if (spapr_dt_cas_updates(spapr, fdt, ov5_updates)) {
         return -1;
@@ -1139,6 +1155,7 @@ static void spapr_reallocate_hpt(sPAPRMachineState *spapr, int shift,
     }
 }
 
+#if 0 /* for p9 mmu tcg */
 static void spapr_reallocate_patb(sPAPRMachineState *spapr, Error **errp)
 {
     g_free(spapr->patb);
@@ -1158,6 +1175,7 @@ static void spapr_reallocate_patb(sPAPRMachineState *spapr, Error **errp)
         memset(spapr->patb, 0, size);
     }
 }
+#endif
 
 static void find_unknown_sysbus_device(SysBusDevice *sbdev, void *opaque)
 {
@@ -1970,6 +1988,7 @@ static void ppc_spapr_init(MachineState *machine)
     }
     spapr_ovec_set(spapr->ov5, OV5_SEG_HCALL);
     spapr_ovec_set(spapr->ov5, OV5_SHOOTDOWN);
+    spapr_ovec_set(spapr->ov5, OV5_SEG_HCALL);
 
     /* advertise support for dedicated HP event source to guests */
     if (spapr->use_hotplug_event_source) {

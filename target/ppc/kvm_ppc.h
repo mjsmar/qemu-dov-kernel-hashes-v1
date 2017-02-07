@@ -283,6 +283,11 @@ static inline PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void)
     return NULL;
 }
 
+static inline bool kvmppc_configure_v3_mmu(PowerPCCPU *cpu, uint64_t flags, uint64_t proctbl)
+{
+    abort();
+}
+
 #endif
 
 #ifndef CONFIG_KVM
