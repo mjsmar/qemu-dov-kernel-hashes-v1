@@ -345,6 +345,18 @@ static bool kvm_get_rmmu_info(PowerPCCPU *cpu, struct kvm_ppc_rmmu_info *info)
     return false;
 }
 
+bool kvmppc_configure_v3_mmu(PowerPCCPU *cpu, uint64_t flags, uint64_t proc_tbl)
+{
+    CPUState *cs = CPU(cpu);
+    int ret;
+    struct kvm_ppc_mmuv3_cfg cfg;
+
+    cfg.flags = flags;
+    cfg.process_table = proc_tbl;
+    ret = kvm_vm_ioctl(cs->kvm_state, KVM_PPC_CONFIGURE_V3_MMU, &cfg);
+    return ret == 0;
+}
+
 static long gethugepagesize(const char *mem_path)
 {
     struct statfs fs;
