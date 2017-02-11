@@ -349,9 +349,9 @@ struct sPAPRMachineState {
 #define H_XIRR_X                0x2FC
 #define H_RANDOM                0x300
 #define H_SET_MODE              0x31C
-#define H_SIGNAL_SYS_RESET      0x380
 #define H_REGISTER_PROCESS_TABLE 0x37C
-#define MAX_HCALL_OPCODE        H_REGISTER_PROCESS_TABLE
+#define H_SIGNAL_SYS_RESET      0x380
+#define MAX_HCALL_OPCODE        H_SIGNAL_SYS_RESET
 
 /* The hcalls above are standardized in PAPR and implemented by pHyp
  * as well.
