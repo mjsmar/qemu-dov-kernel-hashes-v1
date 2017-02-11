@@ -1079,6 +1079,8 @@ void spapr_register_hypercall(target_ulong opcode, spapr_hcall_fn fn)
 
         slot = &papr_hypercall_table[opcode / 4];
     } else {
+        g_assert_cmpint(opcode, >=, KVMPPC_HCALL_BASE);
+        g_assert_cmpint(opcode, <=, KVMPPC_HCALL_MAX);
         assert((opcode >= KVMPPC_HCALL_BASE) && (opcode <= KVMPPC_HCALL_MAX));
 
         slot = &kvmppc_hypercall_table[opcode - KVMPPC_HCALL_BASE];
