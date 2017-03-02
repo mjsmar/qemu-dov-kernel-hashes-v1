@@ -2230,8 +2230,10 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
     if (ret) {
         return ret;
     }
-    _FDT(fdt_setprop_cell(fdt, bus_off, "qemu,mem-bar-min-align",
-                          phb->mem_bar_min_align));
+    if (phb->mem_bar_min_align) {
+        _FDT(fdt_setprop_cell(fdt, bus_off, "qemu,mem-bar-min-align",
+                              phb->mem_bar_min_align));
+    }
 
     return 0;
 }
