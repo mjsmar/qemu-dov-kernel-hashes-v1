@@ -35,6 +35,7 @@
 #include "sysemu/kvm.h"
 #include "trace.h"
 #include "qapi/error.h"
+#include "qapi-event.h"
 
 struct vfio_group_head vfio_group_list =
     QLIST_HEAD_INITIALIZER(vfio_group_list);
@@ -1254,6 +1255,7 @@ void vfio_put_group(VFIOGroup *group)
     QLIST_REMOVE(group, next);
     trace_vfio_put_group(group->fd);
     close(group->fd);
+    qapi_event_send_group_deleted(group->groupid, &error_abort);
     g_free(group);
 
     if (QLIST_EMPTY(&vfio_group_list)) {

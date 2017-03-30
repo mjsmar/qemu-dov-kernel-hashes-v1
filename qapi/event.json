@@ -644,3 +644,24 @@
 ##
 { 'event': 'DUMP_COMPLETED' ,
   'data': { 'result': 'DumpQueryResult', '*error': 'str' } }
+
+##
+# @GROUP_DELETED:
+#
+# Emitted whenever a VFIO group fd associated with a VFIO passthrough device
+# is closed, signifying that the corresponding IOMMU group is now free to be
+# rebound to the host or other guests.
+#
+# @iommu_group: IOMMU group number
+#
+# Since: 2.10
+#
+# Example:
+#
+# <- { "event": "GROUP_DELETED",
+#      "data": { "iommu_group": 0 },
+#      "timestamp": { "seconds": 1265044230, "microseconds": 450486 } }
+#
+##
+{ 'event': 'GROUP_DELETED',
+  'data': { 'iommu_group': 'int' } }
