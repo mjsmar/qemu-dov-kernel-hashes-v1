@@ -1253,6 +1253,7 @@ void vfio_put_group(VFIOGroup *group)
     vfio_kvm_device_del_group(group);
     vfio_disconnect_container(group);
     QLIST_REMOVE(group, next);
+    usleep(2*1000*1000);
     trace_vfio_put_group(group->fd);
     close(group->fd);
     qapi_event_send_group_deleted(group->groupid, &error_abort);
