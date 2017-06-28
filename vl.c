@@ -189,6 +189,7 @@ uint8_t *boot_splash_filedata;
 size_t boot_splash_filedata_size;
 uint8_t qemu_extra_params_fw[2];
 int only_migratable; /* turn it off unless user states otherwise */
+int vfio_group_close_delay = 0;
 
 int icount_align_option;
 
@@ -4017,6 +4018,10 @@ int main(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_qtest_log:
                 qtest_log = optarg;
+                break;
+            case QEMU_OPTION_vfio_group_close_delay:
+                vfio_group_close_delay = atoi(optarg);
+                error_report("testing: setting vfio_group_close_delay to %d ms", vfio_group_close_delay);
                 break;
             case QEMU_OPTION_sandbox:
                 opts = qemu_opts_parse_noisily(qemu_find_opts("sandbox"),

@@ -19,6 +19,7 @@ extern int only_migratable;
 extern const char *qemu_name;
 extern QemuUUID qemu_uuid;
 extern bool qemu_uuid_set;
+extern int vfio_group_close_delay;
 
 bool runstate_check(RunState state);
 void runstate_set(RunState new_state);

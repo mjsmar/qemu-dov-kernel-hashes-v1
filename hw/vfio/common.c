@@ -1245,6 +1245,7 @@ free_group_exit:
 }
 
 #include "qemu/timer.h"
+#include "sysemu/sysemu.h"
 
 typedef struct VFIOGroupTimer {
     QEMUTimer *timer;
@@ -1255,6 +1256,8 @@ typedef struct VFIOGroupTimer {
 static void vfio_group_timer_cb(void *opaque)
 {
     VFIOGroupTimer *gt = opaque;
+
+    g_warning("vfio: completing deferred group %d close", gt->groupid);
 
     trace_vfio_put_group(gt->groupfd);
     close(gt->groupfd);
@@ -1275,11 +1278,19 @@ void vfio_put_group(VFIOGroup *group)
     vfio_disconnect_container(group);
     QLIST_REMOVE(group, next);
 
-    gt = g_new0(VFIOGroupTimer, 1);
-    gt->groupid = group->groupid;
-    gt->groupfd = group->fd;
-    gt->timer = timer_new_ms(QEMU_CLOCK_REALTIME, vfio_group_timer_cb, gt);
-    timer_mod(gt->timer, qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 2000);
+    if (vfio_group_close_delay) {
+        gt = g_new0(VFIOGroupTimer, 1);
+        gt->groupid = group->groupid;
+        gt->groupfd = group->fd;
+        gt->timer = timer_new_ms(QEMU_CLOCK_REALTIME, vfio_group_timer_cb, gt);
+        timer_mod(gt->timer, qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + vfio_group_close_delay);
+        g_warning("vfio: deferring group %d close", gt->groupid);
+    } else {
+        trace_vfio_put_group(group->fd);
+        close(group->fd);
+        qapi_event_send_group_deleted(group->groupid, &error_abort);
+        g_warning("vfio: closing group %d fd normally", group->groupid);
+    }
 
     g_free(group);
 

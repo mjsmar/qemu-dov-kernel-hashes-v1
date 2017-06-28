@@ -3745,6 +3745,14 @@ CD-ROM drive and others. The @code{-nodefaults} option will disable all those
 default devices.
 ETEXI
 
+DEF("vfio-group-close-delay", HAS_ARG, QEMU_OPTION_vfio_group_close_delay, \
+    "-vfio-group-close-delay     delay is ms\n", QEMU_ARCH_ALL)
+STEXI
+@item -vfio-group-close-delay
+@findex -vfio-group-close-delay
+Artifically delay closing of VFIO/IOMMU group FDs (testing)
+ETEXI
+
 #ifndef _WIN32
 DEF("chroot", HAS_ARG, QEMU_OPTION_chroot, \
     "-chroot dir     chroot to dir just before starting the VM\n",
