@@ -1261,6 +1261,7 @@ static void vfio_group_timer_cb(void *opaque)
 
     trace_vfio_put_group(gt->groupfd);
     close(gt->groupfd);
+    trace_vfio_put_group_completed(gt->groupfd);
     qapi_event_send_group_deleted(gt->groupid, &error_abort);
 
     timer_del(gt->timer);
@@ -1288,6 +1289,7 @@ void vfio_put_group(VFIOGroup *group)
     } else {
         trace_vfio_put_group(group->fd);
         close(group->fd);
+        trace_vfio_put_group_completed(group->fd);
         qapi_event_send_group_deleted(group->groupid, &error_abort);
         g_warning("vfio: closing group %d fd normally", group->groupid);
     }
