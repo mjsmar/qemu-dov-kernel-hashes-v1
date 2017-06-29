@@ -1348,6 +1348,7 @@ void vfio_put_base_device(VFIODevice *vbasedev)
     vbasedev->group = NULL;
     trace_vfio_put_base_device(vbasedev->fd);
     close(vbasedev->fd);
+    trace_vfio_put_base_device_completed(vbasedev->fd);
 }
 
 int vfio_get_region_info(VFIODevice *vbasedev, int index,
