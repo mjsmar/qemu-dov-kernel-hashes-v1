@@ -2035,6 +2035,14 @@ void spapr_phb_dma_reset(sPAPRPHBState *sphb)
                            sphb->dma_win_size >> SPAPR_TCE_PAGE_SHIFT);
 }
 
+/* reserve legacy regions like VGA */
+/* FIXME: for now we reserve indiscriminately, but should likely do as-needed */
+#if 0
+static void spapr_phb_reserve_regions(sPAPRPHBState *sphb)
+{
+}
+#endif
+
 static void spapr_phb_reset(DeviceState *qdev)
 {
     sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(qdev);
@@ -2060,6 +2068,7 @@ static void spapr_phb_reset(DeviceState *qdev)
         error_report("reassigning BARs");
         /* TODO: do we need to account for vga legacy regions? */
         spapr_pci_resources_reset(sphb->res);
+        //spapr_pci_reserve_legacy_regions(sphb);
         for (i = PCI_SLOT_MAX - 1; i >= 0; i--) {
             PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
             PCIDevice *pci_dev;
