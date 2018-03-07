@@ -2036,12 +2036,48 @@ void spapr_phb_dma_reset(sPAPRPHBState *sphb)
 }
 
 /* reserve legacy regions like VGA */
-/* FIXME: for now we reserve indiscriminately, but should likely do as-needed */
-#if 0
-static void spapr_phb_reserve_regions(sPAPRPHBState *sphb)
+/* FIXME: wefor now we reserve indiscriminately, but should likely do as-needed */
+/* TODO: since we assign IDs, maybe a data structure to store everything would be
+ * better
+ */
+/* TODO: note that a change in these could break migration. maybe we should pad
+ * them a bit and just reserve a range?
+ */
+static void spapr_phb_reserve_legacy_regions(sPAPRPHBState *sphb, bool has_vga)
 {
+    if (has_vga) {
+        /* vga-lowmem */
+        spapr_pci_resources_reserve_region(sphb->res,
+                                           SPAPR_PCI_RESOURCE_TYPE_MMIO32,
+                                           0x000a0000, 0x20000, 0);
+        /* ports according to docs/specs/standard-vga.txt */
+        /* FIXME: verify these apply for cirrus, virtio-vga, etc. */
+        /* std vga ports */
+        spapr_pci_resources_reserve_region(sphb->res,
+                                           SPAPR_PCI_RESOURCE_TYPE_IO,
+                                           0x3c0, 0x20, 1);
+        /* bochs vbe index/data ports (including x86-only just in case) */
+        /* FIXME: qemu maps 4 bytes @ 0x1ce, not consistent with
+         * spec/vbe_portio_list which shows 3 bytes, how does that happen?
+         * portio_list_add() stuff...
+         */
+        spapr_pci_resources_reserve_region(sphb->res,
+                                           SPAPR_PCI_RESOURCE_TYPE_IO,
+                                           0x1ce, 0x4, 2);
+        /* additional ports (not in standard-vga.txt???), in vga_portio_list */
+        spapr_pci_resources_reserve_region(sphb->res,
+                                           SPAPR_PCI_RESOURCE_TYPE_IO,
+                                           0x3b4, 0x2, 3);
+        spapr_pci_resources_reserve_region(sphb->res,
+                                           SPAPR_PCI_RESOURCE_TYPE_IO,
+                                           0x3ba, 0x1, 4);
+        /* FIXME: ugh, cirrus has different regions, check cirrus_vga.c */
+        /* haha, but we don't support it. but check others. virtio seems
+         * ok but recheck specs, vmware/qxl/virtio-gpu?/...passthrough vga?
+         */
+
+    }
 }
-#endif
 
 static void spapr_phb_reset(DeviceState *qdev)
 {
@@ -2065,10 +2101,11 @@ static void spapr_phb_reset(DeviceState *qdev)
      * lock down a protocol for when to do it
      */
     if (sphb->res) {
+        //sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
         error_report("reassigning BARs");
-        /* TODO: do we need to account for vga legacy regions? */
         spapr_pci_resources_reset(sphb->res);
-        //spapr_pci_reserve_legacy_regions(sphb);
+        //spapr_phb_reserve_legacy_regions(sphb, spapr->has_graphics);
+        spapr_phb_reserve_legacy_regions(sphb, false);
         for (i = PCI_SLOT_MAX - 1; i >= 0; i--) {
             PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
             PCIDevice *pci_dev;
