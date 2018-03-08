@@ -1464,7 +1464,9 @@ static void find_unknown_sysbus_device(SysBusDevice *sbdev, void *opaque)
 
 static int spapr_reset_drcs(Object *child, void *opaque)
 {
-    sPAPRDRConnector *drc =
+    sPAPRDRConnector *drc;
+    g_warning("drc child: %p, child->class: %p", child, child ? child->class : 0);
+    drc =
         (sPAPRDRConnector *) object_dynamic_cast(child,
                                                  TYPE_SPAPR_DR_CONNECTOR);
 
