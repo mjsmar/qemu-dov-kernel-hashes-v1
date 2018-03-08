@@ -1444,7 +1444,7 @@ static void spapr_phb_release_bars(sPAPRPHBState *sphb, PCIDevice *pdev)
 }
 
 static void spapr_phb_assign_bars(sPAPRPHBState *sphb, PCIDevice *pdev,
-                                  bool hotplugged)
+                                  bool hotplugged, int dbg_counter)
 {
     int i;
 
@@ -1515,7 +1515,7 @@ static void spapr_phb_assign_bars(sPAPRPHBState *sphb, PCIDevice *pdev,
         /* TODO: verify difference between mmio64 and mem64 in slof */
 
         addr = spapr_pci_resources_request_bar_region(sphb->res, rtype, r->size,
-                                                      hotplugged, pdev->devfn, i);
+                                                      hotplugged, pdev->devfn | (dbg_counter << 8), i);
                 
         if (addr == HWADDR_MAX) {
             error_report("Failed to map PCI BAR %d for PCI device %x",
@@ -1637,7 +1637,7 @@ static void spapr_pci_plug(HotplugHandler *plug_handler,
     /* TODO: should we do this for hotplug only? or move everything to qemu? */
     /* TODO: if we move everything to qemu, this needs to be at reset as well */
     if (plugged_dev->hotplugged) {
-        spapr_phb_assign_bars(phb, pdev, plugged_dev->hotplugged);
+        spapr_phb_assign_bars(phb, pdev, plugged_dev->hotplugged, 0);
     }
 
     fdt = create_device_tree(&fdt_size);
@@ -2103,19 +2103,21 @@ static void spapr_phb_reset(DeviceState *qdev)
     if (sphb->res) {
         //sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
         error_report("reassigning BARs");
-        spapr_pci_resources_reset(sphb->res);
+        //spapr_pci_resources_reset(sphb->res);
         //spapr_phb_reserve_legacy_regions(sphb, spapr->has_graphics);
         spapr_phb_reserve_legacy_regions(sphb, false);
         for (i = PCI_SLOT_MAX - 1; i >= 0; i--) {
             PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
             PCIDevice *pci_dev;
             int bus_num = 0;
+            static int dbg_counter = 1;
             int devfn = i * 8;
 
             pci_dev = pci_find_device(phb->bus, bus_num, devfn);
             if (pci_dev) {
-                spapr_phb_assign_bars(sphb, pci_dev, false);
+                spapr_phb_assign_bars(sphb, pci_dev, false, dbg_counter);
             }
+            dbg_counter++;
         }
     }
 }
