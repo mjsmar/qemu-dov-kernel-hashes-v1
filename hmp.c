@@ -1948,6 +1948,13 @@ void hmp_migrate(Monitor *mon, const QDict *qdict)
     }
 }
 
+void hmp_migrate_backup(Monitor *mon, const QDict *qdict)
+{
+    migrate_backup_mode = true;
+    hmp_migrate(mon, qdict);
+
+}
+
 void hmp_device_add(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;
