@@ -543,4 +543,6 @@ extern intptr_t qemu_real_host_page_mask;
 extern int qemu_icache_linesize;
 extern int qemu_dcache_linesize;
 
+void tr(const char *format, ...);
+
 #endif

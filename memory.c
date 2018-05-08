@@ -2508,6 +2508,7 @@ void memory_global_dirty_log_sync(void)
     FlatView *view;
     FlatRange *fr;
 
+    tr("qemu_global_log_sync");
     QTAILQ_FOREACH(listener, &memory_listeners, link) {
         if (!listener->log_sync) {
             continue;
@@ -2517,6 +2518,9 @@ void memory_global_dirty_log_sync(void)
         FOR_EACH_FLAT_RANGE(fr, view) {
             if (fr->dirty_log_mask) {
                 MemoryRegionSection mrs = section_from_flat_range(fr, view);
+                tr("qemu_global_log_sync, name: %s, addr: %llx",
+                   mrs.mr ? mrs.mr->name : "null",
+                   mrs.mr ? mrs.mr->addr : -1);
 
                 listener->log_sync(listener, &mrs);
             }

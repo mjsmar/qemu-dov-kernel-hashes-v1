@@ -831,6 +831,7 @@ static void migration_bitmap_sync(RAMState *rs)
     uint64_t bytes_xfer_now;
 
     ram_counters.dirty_sync_count++;
+    tr("migration_bitmap_sync, count: %d", ram_counters.dirty_sync_count);
 
     if (!rs->time_last_bitmap_sync) {
         rs->time_last_bitmap_sync = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
@@ -842,6 +843,10 @@ static void migration_bitmap_sync(RAMState *rs)
     qemu_mutex_lock(&rs->bitmap_mutex);
     rcu_read_lock();
     RAMBLOCK_FOREACH(block) {
+        tr("migration_bitmap_sync, id: %s, block->mr->name: %s, block->used_length: %llxh",
+           block->idstr,
+           block->mr ? block->mr->name : "",
+           block->used_length);
         migration_bitmap_sync_range(rs, block, 0, block->used_length);
     }
     rcu_read_unlock();
@@ -2205,6 +2210,8 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
     RAMState **rsp = opaque;
     RAMBlock *block;
 
+    tr(">ram_save_setup");
+
     /* migration has already setup the bitmap, reuse it. */
     if (!migration_in_colo_state()) {
         if (ram_init_all(rsp) != 0) {
@@ -2234,6 +2241,8 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
 
     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
 
+    tr("<ram_save_setup");
+
     return 0;
 }
 
@@ -2253,6 +2262,9 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
     int i;
     int64_t t0;
     int done = 0;
+    uint64_t total_pages = 0;
+
+    tr(">ram_save_iterate, iteration: %d", rs->iterations);
 
     rcu_read_lock();
     if (ram_list.version != rs->last_version) {
@@ -2270,6 +2282,7 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
         int pages;
 
         pages = ram_find_and_save_block(rs, false);
+        total_pages += pages;
         /* no more pages to sent */
         if (pages == 0) {
             done = 1;
@@ -2303,6 +2316,8 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
     ram_counters.transferred += 8;
 
+    tr("<ram_save_iterate, pages sent: %llu, done: %d", total_pages, done);
+
     ret = qemu_file_get_error(f);
     if (ret < 0) {
         return ret;
@@ -2325,12 +2340,17 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
 {
     RAMState **temp = opaque;
     RAMState *rs = *temp;
+    uint64_t total_pages = 0;
+
+    tr(">ram_save_complete");
 
     rcu_read_lock();
 
     if (!migration_in_postcopy()) {
         migration_bitmap_sync(rs);
     }
+
+    tr("ram_save_complete, dirty pages remaining: %llu", rs->migration_dirty_pages);
 
     ram_control_before_iterate(f, RAM_CONTROL_FINISH);
 
@@ -2341,6 +2361,7 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
         int pages;
 
         pages = ram_find_and_save_block(rs, !migration_in_colo_state());
+        total_pages += pages;
         /* no more blocks to sent */
         if (pages == 0) {
             break;
@@ -2354,6 +2375,8 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
 
     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
 
+    tr("<ram_save_complete, pages sent: %llu", total_pages);
+
     return 0;
 }
 
@@ -2366,6 +2389,8 @@ static void ram_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
     uint64_t remaining_size;
 
     remaining_size = rs->migration_dirty_pages * TARGET_PAGE_SIZE;
+    tr(">ram_save_pending, dirty pages remaining: %llu, page size: %llu",
+       rs->migration_dirty_pages, TARGET_PAGE_SIZE);
 
     if (!migration_in_postcopy() &&
         remaining_size < max_size) {
@@ -2383,6 +2408,8 @@ static void ram_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
     } else {
         *non_postcopiable_pending += remaining_size;
     }
+
+    tr("<ram_save_pending, non_postcopiable_pending: %lld bytes", *non_postcopiable_pending);
 }
 
 static int load_xbzrle(QEMUFile *f, ram_addr_t addr, void *host)
