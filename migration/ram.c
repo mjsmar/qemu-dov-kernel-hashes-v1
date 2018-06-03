@@ -1652,7 +1652,7 @@ static void migration_bitmap_sync(RAMState *rs)
     qemu_mutex_lock(&rs->bitmap_mutex);
     rcu_read_lock();
     RAMBLOCK_FOREACH_MIGRATABLE(block) {
-        const char *filename = g_strdup_printf("bmap_migration.%s.%lu.%lu.",
+        char *filename = g_strdup_printf("bmap_migration.%s.%lu.%lu.",
                                                block->idstr, ram_counters.dirty_sync_count - 1,
                                                qemu_clock_get_ms(QEMU_CLOCK_REALTIME));
         tr("migration_bitmap_sync, id: %s, block->mr->name: %s, block->used_length: %llxh, saved bitmap: %s",
@@ -1661,7 +1661,7 @@ static void migration_bitmap_sync(RAMState *rs)
            block->used_length,
            filename);
         migration_bitmap_sync_range(rs, block, 0, block->used_length);
-        dirty_logging_save_bitmap(block->idstr, 0, block->used_length, filename, NULL);
+        dirty_logging_save_bitmap_nosync(block->idstr, 0, block->used_length, filename, NULL);
         g_free(filename);
 
     }
