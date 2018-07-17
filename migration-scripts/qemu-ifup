@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# add this to sudoers
+#mdroth ALL=NOPASSWD:/sbin/ifconfig, NOPASSWD:/sbin/brctl
+
+#switch=$(/sbin/ip route list | awk '/^default / { print $5 }')
+switch=virbr0
+sudo /sbin/ifconfig $1 0.0.0.0 up
+sudo /sbin/brctl addif ${switch} $1
