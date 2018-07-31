@@ -1,0 +1,65 @@
+== launching guests ==
+
+Guests are launched via:
+
+  launch-guest.sh <config_file> [<migration_source_spec>]:
+
+This launches a guest based on parameters defined in <config_file>. It is
+used by 'migration-harness.sh' to launch a guests on source/target side
+during migration. A reference <config_file> is provided in 'config-host1.sh'.
+<migration_source_spec> is only needed if the guest is to be started as the
+target of an incoming migration, and is specified as documented for
+'-incoming' in QEMU's --help output.
+
+This generally needs to be run as root/sudo.
+
+Before running the 'migration-harness.sh' loop, use this script directly
+to launch the guest and make sure that aspect is working as expected.
+Before doing so there are several main parameters you'll want to change
+when using 'config-host1.sh' as a template, namely:
+
+  MT_VM_NAME
+  MT_VM_MAC
+  MT_HOST_NIC
+  MT_DISK_PATH_ROOT
+  MT_QEMU_BUILD_DIR
+
+Optional command-line options you may want to change are:
+
+  MT_QEMU_OPTS_MACHINE
+  MT_QEMU_OPTS_SMP
+  MT_QEMU_OPTS_MEM
+  MT_QEMU_OPTS_DISK
+
+Other options are exposed in 'config-host1.sh' but the various scripts make
+some assumptions about how those are defined so avoid changing those unless
+it's necessary.
+
+By default the guest will be launched with a single virtio-net NIC using
+usermode networking. This is necessary for the migration scripts as it uses
+port-forwarding to allow the host to ssh to the guest via command-line
+specified local TCP port. On initial boot you'll want to set up your guest
+OS to enable this NIC automatically on boot using DHCP. You'll also want to
+set up password-less SSH between the local host and guest via:
+
+  ssh-copy-id -p <ssh_port> <sudo_guest_user>@localhost
+
+where <ssh_port> is defined in 'launch-guest.sh' as:
+
+  name=$MT_VM_NAME
+  ssh_port=$(($(echo $name | sed 's/vm//') + 2230))
+
+You can also define an additional virtio-net NIC using tap/macvtap backends
+by setting MT_USE_EXTERNAL_NET=1 and MT_USE_MACVTAP accordingly, but these
+are not used by the migration scripts directly. In the case of tap backends,
+they rely on the setup script pointed to by MT_IFUP_SCRIPT, which may also
+need to be modified depending on what host bridge the tap device should
+reside on.
+
+== manual migration run ==
+
+Doing a manual source->target migration using guests launched by
+'launch-guest.sh' will help catch any basic config issues that might prevent
+'migration-harness.sh' from working properly.
+
+
