@@ -3218,8 +3218,9 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
     int64_t t0;
     int done = 0;
     uint64_t total_pages = 0;
+    int iterations = 0;
 
-    tr(">ram_save_iterate, iteration: %d", rs->iterations);
+    tr(">ram_save_iterate, iteration: %d", iterations++);
 
     if (blk_mig_bulk_active()) {
         /* Avoid transferring ram during bulk phase of block migration as
@@ -3392,7 +3393,7 @@ static void ram_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
         *res_precopy_only += remaining_size;
     }
 
-    tr("<ram_save_pending, non_postcopiable_pending: %lld bytes", *non_postcopiable_pending);
+    tr("<ram_save_pending, non_postcopiable_pending: %lld bytes", remaining_size);
 }
 
 static int load_xbzrle(QEMUFile *f, ram_addr_t addr, void *host)
