@@ -264,6 +264,21 @@ static void cap_safe_indirect_branch_apply(sPAPRMachineState *spapr,
 
 #define VALUE_DESC_TRISTATE     " (broken, workaround, fixed)"
 
+static void cap_ccf_assist_apply(sPAPRMachineState *spapr, uint8_t val,
+                                 Error **errp)
+{
+    uint8_t kvm_val = kvmppc_get_cap_count_cache_flush_assist();
+
+    if (tcg_enabled() && val) {
+        /* TODO - for now only allow broken for TCG */
+        error_setg(errp,
+"Requested count cache flush assist capability level not supported by tcg, try cap-ccf-assist=off");
+    } else if (kvm_enabled() && (val > kvm_val)) {
+        error_setg(errp,
+"Requested count cache flush assist capability level not supported by kvm, try cap-ccf-assist=off");
+    }
+}
+
 sPAPRCapabilityInfo capability_table[SPAPR_CAP_NUM] = {
     [SPAPR_CAP_HTM] = {
         .name = "htm",
@@ -326,6 +341,15 @@ sPAPRCapabilityInfo capability_table[SPAPR_CAP_NUM] = {
         .type = "string",
         .possible = &cap_ibs_possible,
         .apply = cap_safe_indirect_branch_apply,
+    },
+    [SPAPR_CAP_CCF_ASSIST] = {
+        .name = "ccf-assist",
+        .description = "Count Cache Flush Assist via HW Instruction",
+        .index = SPAPR_CAP_CCF_ASSIST,
+        .get = spapr_cap_get_bool,
+        .set = spapr_cap_set_bool,
+        .type = "bool",
+        .apply = cap_ccf_assist_apply,
     },
 };
 
@@ -446,6 +470,7 @@ SPAPR_CAP_MIG_STATE(dfp, SPAPR_CAP_DFP);
 SPAPR_CAP_MIG_STATE(cfpc, SPAPR_CAP_CFPC);
 SPAPR_CAP_MIG_STATE(sbbc, SPAPR_CAP_SBBC);
 SPAPR_CAP_MIG_STATE(ibs, SPAPR_CAP_IBS);
+SPAPR_CAP_MIG_STATE(ccf_assist, SPAPR_CAP_CCF_ASSIST);
 
 void spapr_caps_reset(sPAPRMachineState *spapr)
 {
