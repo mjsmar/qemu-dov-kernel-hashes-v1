@@ -387,3 +387,59 @@ static void pc_q35_2_4_machine_options(MachineClass *m)
 
 DEFINE_Q35_MACHINE(v2_4, "pc-q35-2.4", NULL,
                    pc_q35_2_4_machine_options);
+
+/* Ubuntu machine types */
+static void pc_q35_xenial_machine_options(MachineClass *m)
+{
+    pc_q35_2_5_machine_options(m);
+    m->desc = "Ubuntu 16.04 PC (Q35 + ICH9, 2009)";
+}
+DEFINE_Q35_MACHINE(xenial, "pc-q35-xenial", NULL,
+                   pc_q35_xenial_machine_options);
+
+static void pc_q35_yakkety_machine_options(MachineClass *m)
+{
+    pc_q35_2_6_machine_options(m);
+    m->desc = "Ubuntu 16.10 PC (Q35 + ICH9, 2009)";
+}
+DEFINE_Q35_MACHINE(yakkety, "pc-q35-yakkety", NULL,
+                   pc_q35_yakkety_machine_options);
+
+static void pc_q35_zesty_machine_options(MachineClass *m)
+{
+    pc_q35_2_8_machine_options(m);
+    m->desc = "Ubuntu 17.04 PC (Q35 + ICH9, 2009)";
+}
+DEFINE_Q35_MACHINE(zesty, "pc-q35-zesty", NULL,
+                   pc_q35_zesty_machine_options);
+
+static void pc_q35_artful_machine_options(MachineClass *m)
+{
+    pc_q35_2_10_machine_options(m);
+    m->desc = "Ubuntu 17.10 PC (Q35 + ICH9, 2009)";
+    /* The ubuntu alias and default is on the i440fx type */
+    m->alias = NULL;
+}
+DEFINE_Q35_MACHINE(artful, "pc-q35-artful", NULL,
+                   pc_q35_artful_machine_options);
+
+static void pc_q35_bionic_machine_options(MachineClass *m)
+{
+    pc_q35_2_11_machine_options(m);
+    m->desc = "Ubuntu 18.04 PC (Q35 + ICH9, 2009)";
+    /* The ubuntu alias and default is on the i440fx type */
+    m->alias = NULL;
+}
+DEFINE_Q35_MACHINE(bionic, "pc-q35-bionic", NULL,
+                   pc_q35_bionic_machine_options);
+
+static void pc_q35_bionic_hpb_machine_options(MachineClass *m)
+{
+    pc_q35_2_11_machine_options(m);
+    m->desc = "Ubuntu 18.04 PC (Q35 + ICH9, +host-phys-bits=true, 2009)";
+    /* The ubuntu alias and default is on the i440fx type */
+    m->alias = NULL;
+    SET_MACHINE_COMPAT(m, PC_HOST_PHYS_BITS_TRUE);
+}
+DEFINE_Q35_MACHINE(bionic_hpb, "pc-q35-bionic-hpb", NULL,
+                   pc_q35_bionic_hpb_machine_options);

@@ -132,7 +132,7 @@ int main(int argc, char **argv)
 #define MAX_VIRTIO_CONSOLES 1
 #define MAX_SCLP_CONSOLES 1
 
-static const char *data_dir[16];
+static const char *data_dir[32];
 static int data_dir_idx;
 const char *bios_name = NULL;
 enum vga_retrace_method vga_retrace_method = VGA_RETRACE_DUMB;
@@ -2732,6 +2732,17 @@ static gint machine_class_cmp(gconstpointer a, gconstpointer b)
                   object_class_get_name(OBJECT_CLASS(mc1)));
 }
 
+static int EndsWith(const char *str, const char *suffix)
+{
+    if (!str || !suffix)
+        return 0;
+    size_t lenstr = strlen(str);
+    size_t lensuffix = strlen(suffix);
+    if (lensuffix >  lenstr)
+        return 0;
+    return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
+
  static MachineClass *machine_parse(const char *name)
 {
     MachineClass *mc = NULL;
@@ -2745,8 +2756,23 @@ static gint machine_class_cmp(gconstpointer a, gconstpointer b)
         return mc;
     }
     if (name && !is_help_option(name)) {
-        error_report("unsupported machine type");
+        error_report("unsupported machine type '%s'", name);
         error_printf("Use -machine help to list supported machines\n");
+
+        /*
+         * check for formerly supported, but now dropped distro
+         * specific types. Add extra hint to the error on match.
+         * This is arch-independent as it only checks for the suffix.
+         */
+        if (EndsWith(name, "precise") ||
+            EndsWith(name, "utopic") ||
+            EndsWith(name, "vivid")) {
+            error_printf("The machine type is old and out of support now\n");
+            error_printf("Please study https://wiki.ubuntu.com/"
+                         "QemuKVMMigration#Upgrade_machine_type how to"
+                         "upgrade machine types");
+        }
+
     } else {
         printf("Supported machines are:\n");
         machines = g_slist_sort(machines, machine_class_cmp);
@@ -4314,10 +4340,17 @@ int main(int argc, char **argv, char **envp)
     }
 
     /* try to find datadir relative to the executable path */
-    qemu_add_data_dir(os_find_datadir());
+    /* qemu_add_data_dir(os_find_datadir()); */
 
     /* add the datadir specified when building */
+#ifdef CONFIG_QEMU_DATAPATH
+    dirs = g_strsplit(CONFIG_QEMU_DATAPATH, G_SEARCHPATH_SEPARATOR_S, 0);
+    for (i = 0; dirs[i] != NULL; i++) {
+        qemu_add_data_dir(dirs[i]);
+    }
+#else
     qemu_add_data_dir(CONFIG_QEMU_DATADIR);
+#endif
 
     /* -L help lists the data directories and exits. */
     if (list_data_dirs) {

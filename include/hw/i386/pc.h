@@ -1002,5 +1002,16 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     } \
     type_init(pc_machine_init_##suffix)
 
+/* This switches the host-phys-bits property default to true which will
+ * allow to run rather huge guests at the price of reduced migratability
+ * between rather different hosts.
+ */
+#define PC_HOST_PHYS_BITS_TRUE \
+        { \
+            .driver = TYPE_X86_CPU,\
+            .property = "host-phys-bits",\
+            .value = "on",\
+        },
+
 extern void igd_passthrough_isa_bridge_create(PCIBus *bus, uint16_t gpu_dev_id);
 #endif

@@ -310,20 +310,6 @@ static inline bool magic_match(const void *data, const void *magic)
     return *((uint32_t *)data) == *((uint32_t *)magic);
 }
 
-static inline int _memcmp(const void *s1, const void *s2, size_t n)
-{
-    int i;
-    const uint8_t *p1 = s1, *p2 = s2;
-
-    for (i = 0; i < n; i++) {
-        if (p1[i] != p2[i]) {
-            return p1[i] > p2[i] ? 1 : -1;
-        }
-    }
-
-    return 0;
-}
-
 static inline uint32_t iso_733_to_u32(uint64_t x)
 {
     return (uint32_t)x;
@@ -332,10 +318,6 @@ static inline uint32_t iso_733_to_u32(uint64_t x)
 #define ISO_SECTOR_SIZE 2048
 /* El Torito specifies boot image size in 512 byte blocks */
 #define ET_SECTOR_SHIFT 2
-#define KERN_IMAGE_START 0x010000UL
-#define PSW_MASK_64 0x0000000100000000ULL
-#define PSW_MASK_32 0x0000000080000000ULL
-#define IPL_PSW_MASK (PSW_MASK_32 | PSW_MASK_64)
 
 #define ISO_PRIMARY_VD_SECTOR 16
 
@@ -416,7 +398,7 @@ const uint8_t vol_desc_magic[] = "CD001";
 
 static inline bool is_iso_vd_valid(IsoVolDesc *vd)
 {
-    return !_memcmp(&vd->ident[0], vol_desc_magic, 5) &&
+    return !memcmp(&vd->ident[0], vol_desc_magic, 5) &&
            vd->version == 0x1 &&
            vd->type <= VOL_DESC_TYPE_PARTITION;
 }

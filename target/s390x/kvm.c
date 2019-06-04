@@ -495,6 +495,12 @@ int kvm_arch_put_registers(CPUState *cs, int level)
         cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_BPBC;
     }
 
+    if (can_sync_regs(cs, KVM_SYNC_ETOKEN)) {
+        cs->kvm_run->s.regs.etoken = env->etoken;
+        cs->kvm_run->s.regs.etoken_extension  = env->etoken_extension;
+        cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_ETOKEN;
+    }
+
     /* Finally the prefix */
     if (can_sync_regs(cs, KVM_SYNC_PREFIX)) {
         cs->kvm_run->s.regs.prefix = env->psa;
@@ -607,6 +613,11 @@ int kvm_arch_get_registers(CPUState *cs)
 
     if (can_sync_regs(cs, KVM_SYNC_BPBC)) {
         env->bpbc = cs->kvm_run->s.regs.bpbc;
+    }
+
+    if (can_sync_regs(cs, KVM_SYNC_ETOKEN)) {
+        env->etoken = cs->kvm_run->s.regs.etoken;
+        env->etoken_extension = cs->kvm_run->s.regs.etoken_extension;
     }
 
     /* pfault parameters */
@@ -2332,9 +2343,24 @@ void kvm_s390_get_host_cpu_model(S390CPUModel *model, Error **errp)
         error_setg(errp, "KVM: host CPU model could not be identified");
         return;
     }
+    /* for now, we can only provide the AP feature with HW support */
+    if (kvm_vm_check_attr(kvm_state, KVM_S390_VM_CRYPTO,
+        KVM_S390_VM_CRYPTO_ENABLE_APIE)) {
+        set_bit(S390_FEAT_AP, model->features);
+    }
     /* strip of features that are not part of the maximum model */
     bitmap_and(model->features, model->features, model->def->full_feat,
                S390_FEAT_MAX);
+}
+
+static void kvm_s390_configure_apie(bool interpret)
+{
+    uint64_t attr = interpret ? KVM_S390_VM_CRYPTO_ENABLE_APIE :
+                                KVM_S390_VM_CRYPTO_DISABLE_APIE;
+
+    if (kvm_vm_check_attr(kvm_state, KVM_S390_VM_CRYPTO, attr)) {
+        kvm_s390_set_attr(attr);
+    }
 }
 
 void kvm_s390_apply_cpu_model(const S390CPUModel *model, Error **errp)
@@ -2385,6 +2411,10 @@ void kvm_s390_apply_cpu_model(const S390CPUModel *model, Error **errp)
     /* enable CMM via CMMA */
     if (test_bit(S390_FEAT_CMM, model->features)) {
         kvm_s390_enable_cmma();
+    }
+
+    if (test_bit(S390_FEAT_AP, model->features)) {
+        kvm_s390_configure_apie(true);
     }
 }
 

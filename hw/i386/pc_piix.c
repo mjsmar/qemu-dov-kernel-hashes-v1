@@ -328,7 +328,6 @@ static void pc_compat_2_2(MachineState *machine)
 static void pc_compat_2_1(MachineState *machine)
 {
     pc_compat_2_2(machine);
-    x86_cpu_change_kvm_default("svm", NULL);
 }
 
 static void pc_compat_2_0(MachineState *machine)
@@ -434,7 +433,7 @@ static void pc_i440fx_2_11_machine_options(MachineClass *m)
 {
     pc_i440fx_machine_options(m);
     m->alias = "pc";
-    m->is_default = 1;
+    m->is_default = 0;
 }
 
 DEFINE_I440FX_MACHINE(v2_11, "pc-i440fx-2.11", NULL,
@@ -1130,3 +1129,82 @@ static void xenfv_machine_options(MachineClass *m)
 DEFINE_PC_MACHINE(xenfv, "xenfv", pc_xen_hvm_init,
                   xenfv_machine_options);
 #endif
+
+/* Ubuntu machine types */
+static void pc_trusty_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_0_machine_options(m);
+    m->desc = "Ubuntu 14.04 PC (i440FX + PIIX, 1996)";
+}
+DEFINE_I440FX_MACHINE(trusty, "pc-i440fx-trusty", pc_compat_2_0,
+                      pc_trusty_machine_options)
+
+static void pc_xenial_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_5_machine_options(m);
+    m->desc = "Ubuntu 16.04 PC (i440FX + PIIX, 1996)";
+}
+DEFINE_I440FX_MACHINE(xenial, "pc-i440fx-xenial", NULL,
+                      pc_xenial_machine_options);
+
+static void pc_yakkety_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_6_machine_options(m);
+    m->desc = "Ubuntu 16.10 PC (i440FX + PIIX, 1996)";
+}
+DEFINE_I440FX_MACHINE(yakkety, "pc-i440fx-yakkety", NULL,
+                      pc_yakkety_machine_options);
+
+static void pc_zesty_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_8_machine_options(m);
+    m->desc = "Ubuntu 17.04 PC (i440FX + PIIX, 1996)";
+}
+DEFINE_I440FX_MACHINE(zesty, "pc-i440fx-zesty", NULL,
+                      pc_zesty_machine_options);
+
+static void pc_artful_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_10_machine_options(m);
+    m->desc = "Ubuntu 17.10 PC (i440FX + PIIX, 1996)";
+}
+DEFINE_I440FX_MACHINE(artful, "pc-i440fx-artful", NULL,
+                      pc_artful_machine_options);
+
+static void pc_bionic_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_11_machine_options(m);
+    m->desc = "Ubuntu 18.04 PC (i440FX + PIIX, 1996)";
+    m->alias = "ubuntu";
+    m->is_default = 1;
+}
+DEFINE_I440FX_MACHINE(bionic, "pc-i440fx-bionic", NULL,
+                      pc_bionic_machine_options);
+
+static void pc_bionic_hpb_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_11_machine_options(m);
+    m->desc = "Ubuntu 18.04 PC (i440FX + PIIX, +host-phys-bits=true, 1996)";
+    m->alias = NULL;
+    SET_MACHINE_COMPAT(m, PC_HOST_PHYS_BITS_TRUE);
+}
+DEFINE_I440FX_MACHINE(bionic_hpb, "pc-i440fx-bionic-hpb", NULL,
+                      pc_bionic_hpb_machine_options);
+
+/*
+ * Due to bug 1621042 we have to consider the broken old wily machine
+ * type as valid xenial type to ensure older VMs that got created prio
+ * to fixing 1621042 will still work.
+ * Therefore we have to keep it as-is (sans alias and being default) for
+ * the same time we keep the fixed xenial type above.
+ */
+static void pc_wily_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_4_machine_options(m);
+    pc_i440fx_machine_options(m);
+    m->desc = "Ubuntu 15.04 PC (i440FX + PIIX, 1996)",
+    m->default_display = "std";
+}
+
+DEFINE_I440FX_MACHINE(wily, "pc-i440fx-wily", pc_compat_2_3,
+                      pc_wily_machine_options);

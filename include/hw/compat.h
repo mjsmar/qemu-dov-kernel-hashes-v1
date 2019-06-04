@@ -12,7 +12,48 @@
         .driver   = "virtio-tablet-device",\
         .property = "wheel-axis",\
         .value    = "false",\
+    }, \
+    { /* ipxe rom size change, see below for details */ \
+        .driver   = "e1000",\
+        .property = "romfile",\
+        .value    = "compat-256k-efi-e1000.rom",\
+    },\
+    {\
+        .driver   = "ne2000",\
+        .property = "romfile",\
+        .value    = "compat-256k-efi-ne2k_pci.rom",\
+    },\
+    {\
+        .driver   = "pcnet",\
+        .property = "romfile",\
+        .value    = "compat-256k-efi-pcnet.rom",\
+    },\
+    {\
+        .driver   = "rtl8139",\
+        .property = "romfile",\
+        .value    = "compat-256k-efi-rtl8139.rom",\
+    },\
+    {\
+        .driver   = "virtio-net-pci",\
+        .property = "romfile",\
+        .value    = "compat-256k-efi-virtio.rom",\
     },
+/*
+ * ^^ (LP: #1713490)
+ * older IPXE roms were smaller, but just changing this size on ipxe upgrades
+ * breaks migration and save/restore as the PCI bar sizes are not allowed to
+ * change.
+ * This is essentially a per Distribution release detail depending
+ * on which ipxe roms (and which options on build) are bundled with an qemu.
+ * To fix migrations define a compat for anything older than the bump of the
+ * rom size (=pre-bionic = <=2.10) and map older machine types to filenames.
+ * We can then provide compat-roms (essentially the old build on new paths) for
+ * those.
+ * We only support the defaults for migrations (shutdown, move, start and
+ * essentially everything that does a full restart/init works without this
+ * indirection), so only map those whose default rom was on the efi-* roms
+ * which now crossed 256k to use the newer roms for anything else.
+ */
 
 #define HW_COMPAT_2_9 \
     {\
