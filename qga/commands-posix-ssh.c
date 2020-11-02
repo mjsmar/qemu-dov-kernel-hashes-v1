@@ -495,6 +495,15 @@ int main(int argc, char *argv[])
 {
     setlocale(LC_ALL, "");
 
+    test_invalid_user();
+    test_invalid_key();
+    test_add_keys();
+    test_add_reset_keys();
+    test_remove_keys();
+    test_get_keys();
+
+    return 0;
+#if 0
     g_test_init(&argc, &argv, G_TEST_OPTION_ISOLATE_DIRS, NULL);
 
     g_test_add_func("/qga/ssh/invalid_user", test_invalid_user);
@@ -505,6 +514,7 @@ int main(int argc, char *argv[])
     g_test_add_func("/qga/ssh/get_keys", test_get_keys);
 
     return g_test_run();
+#endif
 }
 #else
 int main(int argc, char *argv[])
