@@ -1304,12 +1304,99 @@ static const X86RegisterInfo32 x86_reg_info_32[CPU_NB_REGS32] = {
 };
 #undef REGISTER
 
+typedef struct ExtSaveAreaFeatureFlags {
+    FeatureWord feature;
+    uint32_t bits;
+} ExtSaveAreaFeatureFlags;
+
+static const ExtSaveAreaFeatureFlags x86_ext_save_area_feature_flags[] = {
+    [XSTATE_FP_BIT] = {
+        /* x87 FP state component is always enabled if XSAVE is supported */
+        .feature = FEAT_1_ECX,
+        .bits    = CPUID_EXT_XSAVE
+    },
+    [XSTATE_SSE_BIT] = {
+        /* SSE state component is always enabled if XSAVE is supported */
+        .feature = FEAT_1_ECX,
+        .bits    = CPUID_EXT_XSAVE
+    },
+    [XSTATE_YMM_BIT] = {
+        .feature = FEAT_1_ECX,
+        .bits    = CPUID_EXT_AVX
+    },
+    [XSTATE_BNDREGS_BIT] = {
+        .feature = FEAT_7_0_EBX,
+        .bits    = CPUID_7_0_EBX_MPX
+    },
+    [XSTATE_BNDCSR_BIT] = {
+        .feature = FEAT_7_0_EBX,
+        .bits    = CPUID_7_0_EBX_MPX
+    },
+    [XSTATE_OPMASK_BIT] = {
+        .feature = FEAT_7_0_EBX,
+        .bits    = CPUID_7_0_EBX_AVX512F
+    },
+    [XSTATE_ZMM_Hi256_BIT] = {
+        .feature = FEAT_7_0_EBX,
+        .bits    = CPUID_7_0_EBX_AVX512F
+    },
+    [XSTATE_Hi16_ZMM_BIT] = {
+        .feature = FEAT_7_0_EBX,
+        .bits    = CPUID_7_0_EBX_AVX512F
+    },
+    [XSTATE_PKRU_BIT] = {
+        .feature = FEAT_7_0_ECX,
+        .bits    = CPUID_7_0_ECX_PKU
+    },
+};
+
 typedef struct ExtSaveArea {
     uint32_t feature, bits;
     uint32_t offset, size;
 } ExtSaveArea;
 
-static const ExtSaveArea x86_ext_save_areas[] = {
+static const ExtSaveArea x86_ext_save_areas_intel[] = {
+    [XSTATE_FP_BIT] = {
+        /* x87 state is in the legacy region of the XSAVE area */
+        .offset = 0,
+        .size = sizeof(X86LegacyXSaveArea) + sizeof(X86XSaveHeader),
+    },
+    [XSTATE_SSE_BIT] = {
+        /* SSE state is in the legacy region of the XSAVE area */
+        .offset = 0,
+        .size = sizeof(X86LegacyXSaveArea) + sizeof(X86XSaveHeader),
+    },
+    [XSTATE_YMM_BIT] = {
+        .offset = offsetof(X86XSaveArea, avx_state),
+        .size = sizeof(XSaveAVX)
+    },
+    [XSTATE_BNDREGS_BIT] = {
+        .offset = offsetof(X86XSaveArea, intel.bndreg_state),
+        .size = sizeof(XSaveBNDREG)
+    },
+    [XSTATE_BNDCSR_BIT] = {
+        .offset = offsetof(X86XSaveArea, intel.bndcsr_state),
+        .size = sizeof(XSaveBNDCSR)
+    },
+    [XSTATE_OPMASK_BIT] = {
+        .offset = offsetof(X86XSaveArea, intel.opmask_state),
+        .size = sizeof(XSaveOpmask)
+    },
+    [XSTATE_ZMM_Hi256_BIT] = {
+        .offset = offsetof(X86XSaveArea, intel.zmm_hi256_state),
+        .size = sizeof(XSaveZMM_Hi256)
+    },
+    [XSTATE_Hi16_ZMM_BIT] = {
+        .offset = offsetof(X86XSaveArea, intel.hi16_zmm_state),
+        .size = sizeof(XSaveHi16_ZMM)
+    },
+    [XSTATE_PKRU_BIT] = {
+        .offset = offsetof(X86XSaveArea, intel.pkru_state),
+        .size = sizeof(XSavePKRU),
+    },
+};
+
+static const ExtSaveArea x86_ext_save_areas_amd[] = {
     [XSTATE_FP_BIT] = {
         /* x87 FP state component is always enabled if XSAVE is supported */
         .feature = FEAT_1_ECX, .bits = CPUID_EXT_XSAVE,
@@ -1328,44 +1415,46 @@ static const ExtSaveArea x86_ext_save_areas[] = {
           { .feature = FEAT_1_ECX, .bits = CPUID_EXT_AVX,
             .offset = offsetof(X86XSaveArea, avx_state),
             .size = sizeof(XSaveAVX) },
-    [XSTATE_BNDREGS_BIT] =
-          { .feature = FEAT_7_0_EBX, .bits = CPUID_7_0_EBX_MPX,
-            .offset = offsetof(X86XSaveArea, bndreg_state),
-            .size = sizeof(XSaveBNDREG)  },
-    [XSTATE_BNDCSR_BIT] =
-          { .feature = FEAT_7_0_EBX, .bits = CPUID_7_0_EBX_MPX,
-            .offset = offsetof(X86XSaveArea, bndcsr_state),
-            .size = sizeof(XSaveBNDCSR)  },
-    [XSTATE_OPMASK_BIT] =
-          { .feature = FEAT_7_0_EBX, .bits = CPUID_7_0_EBX_AVX512F,
-            .offset = offsetof(X86XSaveArea, opmask_state),
-            .size = sizeof(XSaveOpmask) },
-    [XSTATE_ZMM_Hi256_BIT] =
-          { .feature = FEAT_7_0_EBX, .bits = CPUID_7_0_EBX_AVX512F,
-            .offset = offsetof(X86XSaveArea, zmm_hi256_state),
-            .size = sizeof(XSaveZMM_Hi256) },
-    [XSTATE_Hi16_ZMM_BIT] =
-          { .feature = FEAT_7_0_EBX, .bits = CPUID_7_0_EBX_AVX512F,
-            .offset = offsetof(X86XSaveArea, hi16_zmm_state),
-            .size = sizeof(XSaveHi16_ZMM) },
     [XSTATE_PKRU_BIT] =
           { .feature = FEAT_7_0_ECX, .bits = CPUID_7_0_ECX_PKU,
-            .offset = offsetof(X86XSaveArea, pkru_state),
-            .size = sizeof(XSavePKRU) },
+            .offset = offsetof(X86XSaveArea, amd.pkru_state),
+            .size = sizeof(XSavePKRU),
+          },
 };
 
-static uint32_t xsave_area_size(uint64_t mask)
+static size_t xsave_area_count(bool amd_xsave) {
+    if (amd_xsave) {
+        return ARRAY_SIZE(x86_ext_save_areas_amd);
+    }
+
+    return ARRAY_SIZE(x86_ext_save_areas_intel);
+}
+
+static uint32_t xsave_area_size(uint64_t mask, bool amd_xsave)
 {
     int i;
     uint64_t ret = 0;
+    const ExtSaveArea *xsave_areas = (amd_xsave) ? x86_ext_save_areas_amd
+                                                 : x86_ext_save_areas_intel;
 
-    for (i = 0; i < ARRAY_SIZE(x86_ext_save_areas); i++) {
-        const ExtSaveArea *esa = &x86_ext_save_areas[i];
+    for (i = 0; i < xsave_area_count(amd_xsave); i++) {
+        const ExtSaveArea *esa = &xsave_areas[i];
         if ((mask >> i) & 1) {
             ret = MAX(ret, esa->offset + esa->size);
         }
     }
     return ret;
+}
+
+static const ExtSaveArea *xsave_area(size_t count, bool amd_xsave)
+{
+    assert(count < xsave_area_count(amd_xsave));
+
+    if (amd_xsave) {
+        return &x86_ext_save_areas_amd[count];
+    }
+
+    return &x86_ext_save_areas_intel[count];
 }
 
 static inline bool accel_uses_host_cpuid(void)
@@ -1496,6 +1585,7 @@ typedef struct X86CPUDefinition {
      */
     const X86CPUVersionDefinition *versions;
     const char *deprecation_note;
+    bool amd_xsave;
 } X86CPUDefinition;
 
 /* Reference to a specific CPU model version */
@@ -4549,10 +4639,10 @@ static const char *x86_cpu_feature_name(FeatureWord w, int bitnr)
     if (w == FEAT_XSAVE_COMP_LO || w == FEAT_XSAVE_COMP_HI) {
         int comp = (w == FEAT_XSAVE_COMP_HI) ? bitnr + 32 : bitnr;
 
-        if (comp < ARRAY_SIZE(x86_ext_save_areas) &&
-            x86_ext_save_areas[comp].bits) {
-            w = x86_ext_save_areas[comp].feature;
-            bitnr = ctz32(x86_ext_save_areas[comp].bits);
+        if (comp < ARRAY_SIZE(x86_ext_save_area_feature_flags) &&
+            x86_ext_save_area_feature_flags[comp].bits) {
+            w = x86_ext_save_area_feature_flags[comp].feature;
+            bitnr = ctz32(x86_ext_save_area_feature_flags[comp].bits);
         }
     }
 
@@ -5008,6 +5098,9 @@ static void x86_cpu_load_model(X86CPU *cpu, X86CPUModel *model)
     /* legacy-cache defaults to 'off' if CPU model provides cache info */
     cpu->legacy_cache = !def->cache_info;
 
+    /* use appropriate xsave sizes for newer AMD models */
+    env->amd_xsave = def->amd_xsave;
+
     env->features[FEAT_1_ECX] |= CPUID_EXT_HYPERVISOR;
 
     /* sysenter isn't supported in compatibility mode on AMD,
@@ -5364,7 +5457,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         }
 
         if (count == 0) {
-            *ecx = xsave_area_size(x86_cpu_xsave_components(cpu));
+            *ecx = xsave_area_size(x86_cpu_xsave_components(cpu), env->amd_xsave);
             *eax = env->features[FEAT_XSAVE_COMP_LO];
             *edx = env->features[FEAT_XSAVE_COMP_HI];
             /*
@@ -5373,12 +5466,17 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
              * even through guest update xcr0, this will crash some legacy guest
              * (e.g., CentOS 6), So set ebx == ecx to workaroud it.
              */
-            *ebx = kvm_enabled() ? *ecx : xsave_area_size(env->xcr0);
+            *ebx = kvm_enabled() ? *ecx : xsave_area_size(env->xcr0, env->amd_xsave);
         } else if (count == 1) {
             *eax = env->features[FEAT_XSAVE];
-        } else if (count < ARRAY_SIZE(x86_ext_save_areas)) {
+            /* Currently this is left to be set later, AMD may need it sooner */
+            if (env->amd_xsave) {
+                const ExtSaveArea *esa = xsave_area(0, env->amd_xsave);
+                *ebx = esa->size; /* initialize to legacy/xcr0=1 size */
+            }
+        } else if (count < xsave_area_count(env->amd_xsave)) {
             if ((x86_cpu_xsave_components(cpu) >> count) & 1) {
-                const ExtSaveArea *esa = &x86_ext_save_areas[count];
+                const ExtSaveArea *esa = xsave_area(count, env->amd_xsave);
                 *eax = esa->size;
                 *ebx = esa->offset;
             }
@@ -5709,8 +5807,8 @@ static void x86_cpu_reset(DeviceState *dev)
     if (env->features[FEAT_1_EDX] & CPUID_SSE) {
         xcr0 |= XSTATE_SSE_MASK;
     }
-    for (i = 2; i < ARRAY_SIZE(x86_ext_save_areas); i++) {
-        const ExtSaveArea *esa = &x86_ext_save_areas[i];
+    for (i = 2; i < ARRAY_SIZE(x86_ext_save_area_feature_flags); i++) {
+        const ExtSaveAreaFeatureFlags *esa = &x86_ext_save_area_feature_flags[i];
         if (env->features[esa->feature] & esa->bits) {
             xcr0 |= 1ull << i;
         }
@@ -5825,8 +5923,8 @@ static void x86_cpu_enable_xsave_components(X86CPU *cpu)
     }
 
     mask = 0;
-    for (i = 0; i < ARRAY_SIZE(x86_ext_save_areas); i++) {
-        const ExtSaveArea *esa = &x86_ext_save_areas[i];
+    for (i = 0; i < ARRAY_SIZE(x86_ext_save_area_feature_flags); i++) {
+        const ExtSaveAreaFeatureFlags *esa = &x86_ext_save_area_feature_flags[i];
         if (env->features[esa->feature] & esa->bits) {
             mask |= (1ULL << i);
         }
@@ -6671,6 +6769,7 @@ static Property x86_cpu_properties[] = {
     DEFINE_PROP_BOOL("tcg-cpuid", X86CPU, expose_tcg, true),
     DEFINE_PROP_BOOL("x-migrate-smi-count", X86CPU, migrate_smi_count,
                      true),
+    DEFINE_PROP_BOOL("amd-xsave", X86CPU, env.amd_xsave, false),
     /*
      * lecacy_cache defaults to true unless the CPU model provides its
      * own cache information (see x86_cpu_load_def()).
