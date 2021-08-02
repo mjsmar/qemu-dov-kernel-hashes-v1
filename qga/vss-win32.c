@@ -81,7 +81,8 @@ bool vss_init(bool init_requester)
         return false;
     }
 
-    provider_lib = LoadLibraryA(QGA_VSS_DLL);
+    //provider_lib = LoadLibraryA(QGA_VSS_DLL);
+    provider_lib = LoadLibraryExA(QGA_VSS_DLL, NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
     if (!provider_lib) {
         char *msg;
         FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
