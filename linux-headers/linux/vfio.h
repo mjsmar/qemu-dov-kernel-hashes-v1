@@ -324,6 +324,9 @@ struct vfio_region_info_cap_type {
 #define VFIO_REGION_TYPE_GFX                    (1)
 #define VFIO_REGION_TYPE_CCW			(2)
 #define VFIO_REGION_TYPE_MIGRATION_DEPRECATED   (3)
+/* TODO: BUILD HACKS */
+#define VFIO_REGION_TYPE_MIGRATION   (3)
+#define VFIO_REGION_SUBTYPE_MIGRATION   (3)
 
 /* sub-types for VFIO_REGION_TYPE_PCI_* */
 
@@ -984,6 +987,8 @@ enum vfio_device_mig_state {
 	VFIO_DEVICE_STATE_STOP_COPY = 3,
 	VFIO_DEVICE_STATE_RESUMING = 4,
 	VFIO_DEVICE_STATE_RUNNING_P2P = 5,
+    /* TODO: BUILD HACK */
+	VFIO_DEVICE_STATE_SAVING = 6,
 };
 
 /* -------- API for Type1 VFIO IOMMU -------- */
