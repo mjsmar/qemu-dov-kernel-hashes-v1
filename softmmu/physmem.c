@@ -3856,21 +3856,32 @@ bool ram_block_discard_is_required(void)
 }
 
 int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
-                            bool shared_to_private)
+                            bool shared_to_private, bool preserve)
 {
     int ret;
     int fd_from, fd_to;
 
+    g_warning("ram_block_convert_range: rb: %p, start: 0x%lx, length: 0x%lx, shared_to_private: %d, preserve: %d",
+              rb, start, length, shared_to_private, preserve);
+
     if (!rb || rb->private_fd <= 0) {
+        error_report("Backend ramblock not initialized as expected.");
         return -1;
     }
 
     if (!QEMU_PTR_IS_ALIGNED(start, rb->page_size) ||
         !QEMU_PTR_IS_ALIGNED(length, rb->page_size)) {
+        error_report("Start/length is not aligned with backend page size (0x%lx)", rb->page_size);
         return -1;
     }
 
     if (length > rb->max_length) {
+        error_report("Length exceeds max length (0x%lx)", rb->max_length);
+        return -1;
+    }
+
+    if (preserve && !shared_to_private) {
+        error_report("Cannot preserve private memory when converting to shared.");
         return -1;
     }
 
@@ -3880,6 +3891,40 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
     } else {
         fd_from = rb->private_fd;
         fd_to = rb->fd;
+    }
+
+    if (shared_to_private && preserve) {
+        void *buf = g_malloc(length);
+        off_t offset = start;
+
+        g_warning("copying from shared fd: %d to private fd: %d", fd_from, fd_to);
+
+        while (offset != (start + length)) {
+            ssize_t count;
+
+            count = pread(fd_from, buf, length - (offset - start), offset);
+            if (count < 0) {
+                error_report("pread() failed at offset 0x%lx: %s", offset, strerror(errno));
+                return -1;
+            }
+
+            offset += count;
+        }
+
+        offset = start;
+
+        while (offset != (start + length)) {
+            ssize_t count;
+
+            count = pwrite(fd_to, buf, length - (offset - start), offset);
+            if (count < 0) {
+                error_report("pwrite() failed at offset 0x%lx: %s", offset, strerror(errno));
+                return -1;
+            }
+
+            offset += count;
+        }
+
     }
 
     ret = ram_block_discard_range_fd(rb, start, length, fd_from);
