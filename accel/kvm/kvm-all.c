@@ -2894,7 +2894,7 @@ static int kvm_enctypt_mem(hwaddr start, hwaddr size, bool shared_to_private)
     return r;
 }
 
-static int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
+int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private, bool preserve)
 {
     MemoryRegionSection section;
     void *addr;
@@ -2907,7 +2907,7 @@ static int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
         addr = memory_region_get_ram_ptr(section.mr) +
                section.offset_within_region;
         rb = qemu_ram_block_from_host(addr, false, &offset);
-        ret = ram_block_convert_range(rb, offset, size, shared_to_private);
+        ret = ram_block_convert_range(rb, offset, size, shared_to_private, preserve);
         if (ret) {
             goto out;
         }
@@ -3086,7 +3086,8 @@ int kvm_cpu_exec(CPUState *cpu)
         case KVM_EXIT_MEMORY_FAULT:
                  ret = kvm_convert_memory(run->memory.gpa,
                                           run->memory.size,
-                                          run->memory.flags & KVM_MEMORY_EXIT_FLAG_PRIVATE);
+                                          run->memory.flags & KVM_MEMORY_EXIT_FLAG_PRIVATE,
+                                          false);
             break;
         default:
             DPRINTF("kvm_arch_handle_exit\n");

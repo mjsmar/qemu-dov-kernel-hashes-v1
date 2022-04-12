@@ -3867,21 +3867,24 @@ bool ram_block_discard_is_required(void)
 }
 
 int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
-                            bool shared_to_private)
+                            bool shared_to_private, bool preserve)
 {
     int ret;
     int fd_from, fd_to;
 
     if (!rb || rb->restricted_fd <= 0) {
+        error_report("Backend ramblock not initialized as expected.");
         return -1;
     }
 
     if (!QEMU_PTR_IS_ALIGNED(start, rb->page_size) ||
         !QEMU_PTR_IS_ALIGNED(length, rb->page_size)) {
+        error_report("Start/length is not aligned with backend page size (0x%lx)", rb->page_size);
         return -1;
     }
 
     if (length > rb->max_length) {
+        error_report("Length exceeds max length (0x%lx)", rb->max_length);
         return -1;
     }
 
@@ -3893,9 +3896,20 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
         fd_to = rb->fd;
     }
 
-    ret = ram_block_discard_range_fd(rb, start, length, fd_from);
-    if (ret) {
-        return ret;
+    /*
+     * In some cases, such as in-place encryption of initial memory contents,
+     * KVM will handle copying from shared->private. For these cases the only
+     * thing that should really happen here is making sure space is allocated
+     * in the private backend.
+     *
+     * TODO: implement a way to discard these pages after KVM does the
+     * in-place encryption.
+     */
+    if (!preserve) {
+        ret = ram_block_discard_range_fd(rb, start, length, fd_from);
+        if (ret) {
+            return ret;
+        }
     }
 
     if (fd_to > 0) {
