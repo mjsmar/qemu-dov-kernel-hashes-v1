@@ -1229,6 +1229,7 @@ sev_launch_update_data(SevGuestState *sev_guest, uint8_t *addr, uint64_t len, hw
 {
     int ret, fw_error;
     struct kvm_sev_launch_update_data update;
+    SevCommonState *sev_common = SEV_COMMON(sev_guest);
 
     if (!addr || !len) {
         return 1;
@@ -1236,6 +1237,15 @@ sev_launch_update_data(SevGuestState *sev_guest, uint8_t *addr, uint64_t len, hw
 
     update.uaddr = (__u64)(unsigned long)addr;
     update.len = len;
+
+    if (sev_common->upm_mode) {
+        ret = kvm_convert_memory(start, len, true, true);
+        if (ret) {
+            error_report("Failed to convert shared guest memory to private.");
+            return ret;
+        }
+    }
+
     trace_kvm_sev_launch_update_data(addr, len);
     ret = sev_ioctl(SEV_COMMON(sev_guest)->sev_fd, KVM_SEV_LAUNCH_UPDATE_DATA,
                     &update, &fw_error);
