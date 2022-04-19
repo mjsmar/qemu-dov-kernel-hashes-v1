@@ -818,7 +818,8 @@ static void pflash_cfi01_realize(DeviceState *dev, Error **errp)
 
     total_len = pfl->sector_len * pfl->nb_blocs;
 
-    memory_region_init_rom_device(
+    //memory_region_init_rom_device(
+    memory_region_init_rom_device_private(
         &pfl->mem, OBJECT(dev),
         &pflash_cfi01_ops,
         pfl,
