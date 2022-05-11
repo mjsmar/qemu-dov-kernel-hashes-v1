@@ -209,6 +209,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
                     exit(1);
                 }
 
+                assert(gpa == flash_mem->addr);
                 sev_encrypt_flash(gpa, flash_ptr, flash_size, &error_fatal);
             }
         }
