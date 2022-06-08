@@ -3938,9 +3938,17 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
 
     }
 
-    ret = ram_block_discard_range_fd(rb, start, length, fd_from);
-    if (ret) {
-        return ret;
+    /*
+     * HACK: disable discard for SEV-SNP private memory. This causes a kernel
+     * crash currently, so leave the private memory allocated and rely on the
+     * clean up path to handle deallocation at shutdown.
+     */
+    if (!object_dynamic_cast(OBJECT(current_machine->cgs), "sev-snp-guest")
+        || !shared_to_private) {
+        ret = ram_block_discard_range_fd(rb, start, length, fd_from);
+        if (ret) {
+            return ret;
+        }
     }
 
     if (fd_to > 0) {
