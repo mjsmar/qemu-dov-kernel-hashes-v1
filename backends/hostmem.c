@@ -332,6 +332,8 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
     void *ptr;
     uint64_t sz;
 
+    g_warning("backend_memory_complete: marker 0");
+
     if (bc->alloc) {
         bc->alloc(backend, &local_err);
         if (local_err) {
