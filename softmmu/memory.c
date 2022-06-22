@@ -1193,6 +1193,8 @@ void memory_region_init(MemoryRegion *mr,
 {
     object_initialize(mr, sizeof(*mr), TYPE_MEMORY_REGION);
     memory_region_do_init(mr, owner, name, size);
+
+    g_warning("region_init: %s, size: 0x%lx", name ? name : "null", size);
 }
 
 static void memory_region_get_container(Object *obj, Visitor *v,
@@ -1647,6 +1649,8 @@ void memory_region_set_private_fd(MemoryRegion *mr, int fd)
     if (mr->ram_block) {
         mr->ram_block->private_fd = fd;
     }
+    g_warning("set MR %s to private, fd: %d, mr->ram_block->private_fd: %d",
+               mr->name, fd, mr->ram_block->private_fd);
 }
 
 #endif
