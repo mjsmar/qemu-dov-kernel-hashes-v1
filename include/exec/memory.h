@@ -1516,6 +1516,13 @@ void memory_region_init_ram(MemoryRegion *mr,
                             uint64_t size,
                             Error **errp);
 
+void memory_region_init_ram_private(MemoryRegion *mr,
+                                    Object *owner,
+                                    const char *name,
+                                    uint64_t size,
+                                    bool shared,
+                                    Error **errp);
+
 /**
  * memory_region_init_rom: Initialize a ROM memory region.
  *

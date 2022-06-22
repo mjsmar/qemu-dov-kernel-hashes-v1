@@ -3559,6 +3559,34 @@ void memory_region_init_ram(MemoryRegion *mr,
     vmstate_register_ram(mr, owner_dev);
 }
 
+void memory_region_init_ram_private(MemoryRegion *mr,
+                                    Object *owner,
+                                    const char *name,
+                                    uint64_t size,
+                                    bool shared,
+                                    Error **errp)
+{
+    int shared_fd, priv_fd;
+
+    shared_fd = qemu_memfd_create("rom-backend-memfd-shared", size, false, 0, 0, 0, errp);
+    if (shared_fd == -1) {
+        return;
+    }
+
+    priv_fd = qemu_memfd_create("rom-backend-memfd-private", size, true, 0, 0, 0, errp);
+    if (priv_fd == -1) {
+        return;
+    }
+
+    memory_region_init_ram_from_fd(mr, owner, name, size, RAM_SHARED|RAM_NORESERVE, shared_fd, 0, errp);
+
+    if (!shared) {
+        fallocate(priv_fd, 0, 0, size);
+    }
+
+    memory_region_set_private_fd(mr, priv_fd);
+}
+
 void memory_region_init_rom(MemoryRegion *mr,
                             Object *owner,
                             const char *name,
