@@ -291,12 +291,15 @@ sev_ram_block_added(RAMBlockNotifier *n, void *host, size_t size,
      */
     mr = memory_region_from_host(host, &offset);
     if (mr && memory_region_is_ram_device(mr)) {
+        g_warning("register region: %s, skipping ram_device", mr->name ? mr->name : "null");
         return;
     }
 
     range.addr = (__u64)(unsigned long)host;
     range.size = max_size;
 
+    g_warning("register region: %s, hva: 0x%llx, size: 0x%llx",
+              (mr && mr->name) ? mr->name: "null", range.addr, range.size);
     trace_kvm_memcrypt_register_region(host, max_size);
     r = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_REG_REGION, &range);
     if (r) {
