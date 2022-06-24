@@ -169,9 +169,9 @@ Boot images (such as bios) must be encrypted before a guest can be booted. The
 ``SNP_LAUNCH_FINISH``. These four commands together generate a fresh memory
 encryption key for the VM, encrypt the boot images for a successful launch.
 
-``KVM_SNP_INIT`` is called first to initialize the SEV-SNP firmware and SNP
+KVM_SNP_INIT is called first to initialize the SEV-SNP firmware and SNP
 features in the KVM. The feature flags value can be provided through the
-`init-flags` property of the `sev-snp-guest` object.
+init-flags property of the sev-snp-guest object.
 
 +------------+-------+----------+---------------------------------+
 | key        | type  | default  | meaning                         |
@@ -185,7 +185,7 @@ Note: currently the init_flags must be zero.
 within the firmware. To create this context, guest owner must provide a guest
 policy and other parameters as described in the SEV-SNP firmware
 specification. The launch parameters should be specified as described in the
-QAPI schema for the `sev-snp-guest` object.
+QAPI schema for the sev-snp-guest object.
 
 The ``SNP_LAUNCH_START`` uses the following parameters (see the SEV-SNP
 specification for more details):

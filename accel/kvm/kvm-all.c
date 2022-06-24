@@ -2889,7 +2889,7 @@ int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private, bool p
         addr = memory_region_get_ram_ptr(section.mr) +
                section.offset_within_region;
         rb = qemu_ram_block_from_host(addr, false, &offset);
-        g_warning("kvm_convert_memory: mr: %s", section.mr->name);
+        //g_warning("kvm_convert_memory: mr: %s", section.mr->name);
         ret = ram_block_convert_range(rb, offset, size, shared_to_private, preserve);
         memory_region_unref(section.mr);
         return ret;

@@ -3872,8 +3872,8 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
     int ret;
     int fd_from, fd_to;
 
-    g_warning("ram_block_convert_range: rb: %p, start: 0x%lx, length: 0x%lx, shared_to_private: %d, preserve: %d",
-              rb, start, length, shared_to_private, preserve);
+    //g_warning("ram_block_convert_range: rb: %p, start: 0x%lx, length: 0x%lx, shared_to_private: %d, preserve: %d",
+    //          rb, start, length, shared_to_private, preserve);
 
     if (!rb || rb->private_fd <= 0) {
         error_report("Backend ramblock not initialized as expected.");
