@@ -3896,6 +3896,8 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
         fd_to = rb->fd;
     }
 
+    trace_kvm_memory_convert(fd_from, fd_to, start, length, shared_to_private, preserve);
+
     /*
      * In some cases, such as in-place encryption of initial memory contents,
      * KVM will handle copying from shared->private. For these cases the only
