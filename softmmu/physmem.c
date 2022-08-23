@@ -3952,7 +3952,7 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
     }
 
     if (fd_to > 0) {
-        return fallocate(fd_to, 0, start, length);
+        //return fallocate(fd_to, 0, start, length);
     }
 
     return 0;

@@ -65,7 +65,7 @@ priv_memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
                                    backend->size, ram_flags, fd, 0, errp);
     g_free(name);
 
-    fallocate(priv_fd, 0, 0, backend->size);
+    //fallocate(priv_fd, 0, 0, backend->size);
     memory_region_set_private_fd(&backend->mr, priv_fd);
     machine->ram_size = backend->size;
 }
