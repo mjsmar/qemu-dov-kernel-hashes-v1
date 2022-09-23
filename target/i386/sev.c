@@ -1205,7 +1205,7 @@ sev_snp_launch_update(SevSnpGuestState *sev_snp_guest, hwaddr gpa, uint8_t *addr
     update.len = len;
     update.page_type = type;
     if (SEV_COMMON(sev_snp_guest)->upm_mode) {
-        ret = kvm_convert_memory(gpa, len, true, true);
+        ret = kvm_convert_memory(gpa, len, true, false);
         if (ret) {
             error_report("Failed to convert shared guest memory to private.");
             return ret;
@@ -1240,7 +1240,7 @@ sev_launch_update_data(SevGuestState *sev_guest, uint8_t *addr, uint64_t len, hw
     update.len = len;
 
     if (sev_common->upm_mode) {
-        ret = kvm_convert_memory(start, len, true, true);
+        ret = kvm_convert_memory(start, len, true, false);
         if (ret) {
             error_report("Failed to convert shared guest memory to private.");
             return ret;
