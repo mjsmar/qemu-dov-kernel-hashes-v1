@@ -1572,11 +1572,11 @@ static void *file_ram_alloc(RAMBlock *block,
         return NULL;
     }
     block->mr->align = MAX(block->page_size, block->mr->align);
-#if defined(__s390x__)
+//#if defined(__s390x__)
     if (kvm_enabled()) {
         block->mr->align = MAX(block->mr->align, QEMU_VMALLOC_ALIGN);
     }
-#endif
+//#endif
 
     if (memory < block->page_size) {
         error_setg(errp, "memory size 0x" RAM_ADDR_FMT " must be equal to "
@@ -3891,10 +3891,12 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
         return -1;
     }
 
+#if 0
     if (preserve && !shared_to_private) {
         error_report("Cannot preserve private memory when converting to shared.");
         return -1;
     }
+#endif
 
     if (shared_to_private) {
         fd_from = rb->fd;
@@ -3904,6 +3906,7 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
         fd_to = rb->fd;
     }
 
+#if 0
     if (shared_to_private && preserve) {
         void *buf = g_malloc(length);
         off_t offset = start;
@@ -3937,14 +3940,20 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
         }
 
     }
+#endif
 
     /*
      * HACK: disable discard for SEV-SNP private memory. This causes a kernel
      * crash currently, so leave the private memory allocated and rely on the
      * clean up path to handle deallocation at shutdown.
      */
+#if 0
     if (!object_dynamic_cast(OBJECT(current_machine->cgs), "sev-snp-guest")
         || !shared_to_private) {
+    if (false) {
+#endif
+    if (!shared_to_private) {
+        g_warning("discarding memory at offset start: 0x%lx", start);
         ret = ram_block_discard_range_fd(rb, start, length, fd_from);
         if (ret) {
             return ret;

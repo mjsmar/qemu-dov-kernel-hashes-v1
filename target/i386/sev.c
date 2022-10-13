@@ -285,6 +285,10 @@ sev_ram_block_added(RAMBlockNotifier *n, void *host, size_t size,
     ram_addr_t offset;
     MemoryRegion *mr;
 
+    if (sev_upm_enabled()) {
+        return;
+    }
+
     /*
      * The RAM device presents a memory region that should be treated
      * as IO region and should not be pinned.
@@ -1205,7 +1209,8 @@ sev_snp_launch_update(SevSnpGuestState *sev_snp_guest, hwaddr gpa, uint8_t *addr
     update.len = len;
     update.page_type = type;
     if (SEV_COMMON(sev_snp_guest)->upm_mode) {
-        ret = kvm_convert_memory(gpa, len, true, false);
+        //ret = kvm_convert_memory(gpa, len, true, false);
+        ret = kvm_convert_memory(gpa, len, true, true);
         if (ret) {
             error_report("Failed to convert shared guest memory to private.");
             return ret;
@@ -2143,9 +2148,21 @@ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp)
     return ret;
 }
 
-#define GHCB_MSR_INFO_POS       0
-#define GHCB_DATA_LOW           12
-#define GHCB_MSR_INFO_MASK      (BIT_ULL(GHCB_DATA_LOW) - 1)
+#define GHCB_MSR_INFO_POS           0
+#define GHCB_MSR_INFO_MASK          MAKE_64BIT_MASK(GHCB_MSR_INFO_POS, 12)
+
+#define GHCB_MSR_PSC_GFN_POS        12
+#define GHCB_MSR_PSC_GFN_MASK       MAKE_64BIT_MASK(GHCB_MSR_PSC_GFN_POS, 39)
+#define GHCB_MSR_PSC_ERROR_POS      32
+#define GHCB_MSR_PSC_ERROR_MASK     MAKE_64BIT_MASK(GHCB_MSR_PSC_ERROR_POS, 32)
+#define GHCB_MSR_PSC_ERROR          GHCB_MSR_PSC_ERROR_MASK
+#define GHCB_MSR_PSC_OP_POS         52
+#define GHCB_MSR_PSC_OP_MASK        MAKE_64BIT_MASK(GHCB_MSR_PSC_OP_POS, 4)
+#define GHCB_MSR_PSC_OP_PRIVATE     1
+#define GHCB_MSR_PSC_OP_SHARED      2
+#define GHCB_MSR_PSC_REQ            0x14
+#define GHCB_MSR_PSC_RESP           0x15
+
 #if 0
 #define GHCB_DATA(v) \
     (((unsigned long)(v) & ~GHCB_MSR_INFO_MASK) >> GHCB_DATA_LOW
@@ -2192,7 +2209,38 @@ struct snp_psc_desc {
     struct psc_entry entries[VMGEXIT_PSC_MAX_ENTRY];
 } __attribute__((__packed__));
 
-int kvm_handle_vmgexit(uint64_t ghcb_msr, uint8_t *error)
+static int kvm_handle_vmgexit_msr_protocol(__u64 *ghcb_msr)
+{
+    uint64_t op, gfn;
+    int ret;
+
+    if ((*ghcb_msr & GHCB_MSR_INFO_MASK) != GHCB_MSR_PSC_REQ) {
+        g_warning("vmgexit (msr protocol), ghcb_msr: 0x%llx, invalid request",
+                  *ghcb_msr);
+        return -1;
+    }
+   
+    op = (*ghcb_msr & GHCB_MSR_PSC_OP_MASK) >> GHCB_MSR_PSC_OP_POS;
+    gfn = (*ghcb_msr & GHCB_MSR_PSC_GFN_MASK) >> GHCB_MSR_PSC_GFN_POS;
+
+    g_warning("vmgexit (msr protocol), ghcb_msr: 0x%llx, op: 0x%lx, gfn: 0x%lx",
+              *ghcb_msr, op, gfn);
+
+    ret = kvm_convert_memory(gfn << TARGET_PAGE_BITS, TARGET_PAGE_SIZE,
+                             op == GHCB_MSR_PSC_OP_PRIVATE, false);
+
+    if (ret) {
+        *ghcb_msr &= ~GHCB_MSR_PSC_ERROR_MASK;
+        *ghcb_msr |= GHCB_MSR_PSC_ERROR;
+    }
+
+    *ghcb_msr &= ~GHCB_MSR_INFO_MASK;
+    *ghcb_msr |= GHCB_MSR_PSC_RESP;
+
+    return 0;
+}
+
+int kvm_handle_vmgexit(__u64 *ghcb_msr, uint8_t *error)
 {
     struct ghcb *ghcb;
     hwaddr len = sizeof(struct ghcb);
@@ -2201,16 +2249,16 @@ int kvm_handle_vmgexit(uint64_t ghcb_msr, uint8_t *error)
     uint16_t cur_entry;
     int i;
     uint8_t shared_buf[GHCB_SHARED_BUF_SIZE];
+    uint64_t ghcb_addr = *ghcb_msr;
 
-    if (ghcb_msr & GHCB_MSR_INFO_MASK) {
-        g_warning("vmgexit (msr protocol), ghcb_msr: 0x%lx, ignoring...", ghcb_msr);
-        goto out;
+    if (*ghcb_msr & GHCB_MSR_INFO_MASK) {
+        return kvm_handle_vmgexit_msr_protocol(ghcb_msr);
     }
 
-    ghcb = address_space_map(&address_space_memory, ghcb_msr,
+    ghcb = address_space_map(&address_space_memory, ghcb_addr,
                                   &len, true, attrs);
 
-    g_warning("vmgexit (exit_code: 0x%lx, ghcb_msr: 0x%lx", ghcb->save.sw_exit_code, ghcb_msr);
+    g_warning("vmgexit (exit_code: 0x%lx, ghcb_addr: 0x%lx", ghcb->save.sw_exit_code, ghcb_addr);
 
     memcpy(shared_buf, ghcb->shared_buffer, GHCB_SHARED_BUF_SIZE);
     address_space_unmap(&address_space_memory, ghcb, len, true, len);
@@ -2238,7 +2286,7 @@ int kvm_handle_vmgexit(uint64_t ghcb_msr, uint8_t *error)
     }
 
     /* TODO: what happens if ghcb tries to convert itself? */
-    ghcb = address_space_map(&address_space_memory, ghcb_msr,
+    ghcb = address_space_map(&address_space_memory, ghcb_addr,
                                   &len, true, attrs);
     memcpy(ghcb->shared_buffer, shared_buf, GHCB_SHARED_BUF_SIZE);
     address_space_unmap(&address_space_memory, ghcb, len, true, len);

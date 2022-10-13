@@ -2915,6 +2915,13 @@ int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private, bool p
 
     memory_region_unref(section.mr);
 
+    /*
+     * Don't call KVM_MEM_ENCRYPT_REG_REGION for initial memory contents, let other
+     * APIs handle those conversions.
+     */
+    if (preserve)
+        return 0;
+
     return kvm_enctypt_mem(start, size, shared_to_private);
 }
 
@@ -3081,7 +3088,9 @@ skip:
                 break;
             }
             break;
-        case KVM_EXIT_MEMORY_ERROR:
+        case KVM_EXIT_MEMORY_FAULT:
+                 g_warning("memory fault, gfn: 0x%llx, size: 0x%llx, flags: 0x%x",
+                           run->memory.gpa, run->memory.size, run->memory.flags);
                  ret = kvm_convert_memory(run->memory.gpa,
                                           run->memory.size,
                                           run->memory.flags & KVM_MEMORY_EXIT_FLAG_PRIVATE,
