@@ -298,6 +298,10 @@ sev_ram_block_added(RAMBlockNotifier *n, void *host, size_t size,
         return;
     }
 
+    if (sev_upm_enabled()) {
+        return;
+    }
+
     range.addr = (__u64)(unsigned long)host;
     range.size = max_size;
 
@@ -325,6 +329,10 @@ sev_ram_block_removed(RAMBlockNotifier *n, void *host, size_t size,
      */
     mr = memory_region_from_host(host, &offset);
     if (mr && memory_region_is_ram_device(mr)) {
+        return;
+    }
+
+    if (sev_upm_enabled()) {
         return;
     }
 
