@@ -4334,6 +4334,21 @@ static const X86CPUDefinition builtin_x86_defs[] = {
                 },
                 .cache_info = &epyc_milan_v2_cache_info
             },
+            {
+                .version = 3,
+                .note = "compatible with SEV-SNP CPUID enforcement",
+                .props = (PropValue[]) {
+                    { "model-id",
+                      "AMD EPYC-Milan-v3 Processor" },
+                    { "vaes", "on" },
+                    { "vpclmulqdq", "on" },
+                    { "stibp-always-on", "on" },
+                    { "amd-psfd", "on" },
+                    { "lfence-always-serializing", "on" },
+                    { "null-selector-clears-base", "on" },
+                    { /* end of list */ }
+                }
+            },
             { /* end of list */ }
         }
     },
