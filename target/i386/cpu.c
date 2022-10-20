@@ -934,6 +934,22 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
         .tcg_features = 0,
         .unmigratable_flags = 0,
     },
+    [FEAT_8000_0022_EAX] = {
+        .type = CPUID_FEATURE_WORD,
+        .feat_names = {
+            "perfmon-v2", NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+        },
+        .cpuid = { .eax = 0x80000022, .reg = R_EAX, },
+        .tcg_features = 0,
+        .unmigratable_flags = 0,
+    },
     [FEAT_XSAVE] = {
         .type = CPUID_FEATURE_WORD,
         .feat_names = {
@@ -6103,6 +6119,12 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
     case 0x80000021:
         *eax = env->features[FEAT_8000_0021_EAX];
         *ebx = *ecx = *edx = 0;
+        break;
+    case 0x80000022:
+        *eax = env->features[FEAT_8000_0022_EAX];
+        *ebx = (env->features[FEAT_8000_0022_EAX] &
+                CPUID_8000_0022_EAX_PERFMON_V2) ? 6 : 0;
+        *ecx = *edx = 0;
         break;
     default:
         /* reserved values: zero */
