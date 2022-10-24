@@ -2033,7 +2033,7 @@ static const CPUCaches epyc_genoa_cache_info = {
         .lines_per_tag = 1,
         .self_init = true,
         .inclusive = true,
-        .complex_indexing = true,
+        .complex_indexing = false,
     },
 };
 
