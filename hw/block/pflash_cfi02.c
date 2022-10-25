@@ -880,12 +880,7 @@ static void pflash_cfi02_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-#if 0
     memory_region_init_rom_device(&pfl->orig_mem, OBJECT(pfl),
-                                  &pflash_cfi02_ops, pfl, pfl->name,
-                                  pfl->chip_len, errp);
-#endif
-    memory_region_init_rom_device_private(&pfl->orig_mem, OBJECT(pfl),
                                   &pflash_cfi02_ops, pfl, pfl->name,
                                   pfl->chip_len, errp);
     if (*errp) {

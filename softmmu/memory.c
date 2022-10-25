@@ -33,6 +33,7 @@
 #include "qemu/accel.h"
 #include "hw/boards.h"
 #include "migration/vmstate.h"
+#include "exec/confidential-guest-support.h"
 
 //#define DEBUG_UNASSIGNED
 
@@ -3541,8 +3542,15 @@ void memory_region_init_ram(MemoryRegion *mr,
                             uint64_t size,
                             Error **errp)
 {
+    ConfidentialGuestSupport *cgs;
     DeviceState *owner_dev;
     Error *err = NULL;
+
+    cgs = MACHINE(qdev_get_machine())->cgs;
+    if (cgs && cgs->use_private_memslots) {
+        return memory_region_init_ram_private(mr, owner, name, size, true,
+                                              errp);
+    }
 
     memory_region_init_ram_nomigrate(mr, owner, name, size, &err);
     if (err) {
@@ -3619,8 +3627,15 @@ void memory_region_init_rom_device(MemoryRegion *mr,
                                    uint64_t size,
                                    Error **errp)
 {
+    ConfidentialGuestSupport *cgs;
     DeviceState *owner_dev;
     Error *err = NULL;
+
+    cgs = MACHINE(qdev_get_machine())->cgs;
+    if (cgs && cgs->use_private_memslots) {
+        return memory_region_init_rom_device_private(mr, owner, ops, opaque,
+                                                     name, size, errp);
+    }
 
     memory_region_init_rom_device_nomigrate(mr, owner, ops, opaque,
                                             name, size, &err);
