@@ -3907,7 +3907,7 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
      * TODO: implement a way to discard these pages after KVM does the
      * in-place encryption.
      */
-    if (!preserve) {
+    if (false && !preserve) {
         ret = ram_block_discard_range_fd(rb, start, length, fd_from);
         if (ret) {
             return ret;
