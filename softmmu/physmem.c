@@ -3952,7 +3952,7 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
         || !shared_to_private) {
     if (false) {
 #endif
-    if (!shared_to_private) {
+    if (false && !shared_to_private) {
         g_warning("discarding memory at offset start: 0x%lx", start);
         ret = ram_block_discard_range_fd(rb, start, length, fd_from);
         if (ret) {
