@@ -2922,6 +2922,13 @@ out:
         return ret;
     }
 
+    /*
+     * Don't call KVM_MEM_ENCRYPT_REG_REGION for initial memory contents, let other
+     * APIs handle those conversions.
+     */
+    if (preserve)
+        return 0;
+
     return kvm_enctypt_mem(start, size, shared_to_private);
 }
 
