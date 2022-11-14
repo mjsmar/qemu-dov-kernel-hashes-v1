@@ -51,6 +51,7 @@
 #include "sysemu/hw_accel.h"
 #include "sysemu/xen-mapcache.h"
 #include "trace/trace-root.h"
+#include "exec/confidential-guest-support.h"
 
 #ifdef CONFIG_FALLOCATE_PUNCH_HOLE
 #include <linux/falloc.h>
@@ -3866,11 +3867,17 @@ bool ram_block_discard_is_required(void)
            qatomic_read(&ram_block_coordinated_discard_required_cnt);
 }
 
+#define DISCARD_BOTH 0
+#define DISCARD_SHARED 1
+#define DISCARD_PRIVATE 2
+#define DISCARD_NONE 3
+
 int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
                             bool shared_to_private, bool preserve)
 {
     int ret;
     int fd_from, fd_to;
+    ConfidentialGuestSupport *cgs = MACHINE(qdev_get_machine())->cgs;
 
     if (!rb || rb->restricted_fd <= 0) {
         error_report("Backend ramblock not initialized as expected.");
@@ -3907,7 +3914,11 @@ int ram_block_convert_range(RAMBlock *rb, uint64_t start, size_t length,
      * TODO: implement a way to discard these pages after KVM does the
      * in-place encryption.
      */
-    if (!preserve) {
+    if (!preserve &&
+        ((shared_to_private &&
+          (cgs->discard == DISCARD_BOTH || cgs->discard == DISCARD_SHARED)) ||
+         (!shared_to_private &&
+          (cgs->discard == DISCARD_BOTH || cgs->discard == DISCARD_PRIVATE)))) {
         ret = ram_block_discard_range_fd(rb, start, length, fd_from);
         if (ret) {
             return ret;
