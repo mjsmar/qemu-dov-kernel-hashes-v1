@@ -70,11 +70,13 @@ int qemu_memfd_restricted(size_t size, unsigned int flags, Error **errp)
         return -1;
     }
 
+#if 0
     if (ftruncate(mfd, size) == -1) {
         error_setg_errno(errp, errno, "failed to resize memfd to %zu", size);
 	close(mfd);
         return -1;
     }
+#endif
 
     return mfd;
 #else
