@@ -836,6 +836,10 @@
 # @reduced-phys-bits: number of bits in physical addresses that become
 #                     unavailable when SEV is enabled
 #
+# @kernel-hashes: if true, add hashes of kernel/initrd/cmdline to a
+#                 designated guest firmware page for measured boot
+#                 with -kernel (default: false) (since 6.2)
+#
 # @upm-mode: configure Unmapped Private Memory mode
 #
 # @discard: configure how discarding is handled for memory after
@@ -848,6 +852,7 @@
   'data': { '*sev-device': 'str',
             '*cbitpos': 'uint32',
             'reduced-phys-bits': 'uint32',
+            '*kernel-hashes': 'bool',
             '*upm-mode': 'bool',
             '*discard': 'str' } }
 
@@ -864,10 +869,6 @@
 #
 # @handle: SEV firmware handle (default: 0)
 #
-# @kernel-hashes: if true, add hashes of kernel/initrd/cmdline to a
-#                 designated guest firmware page for measured boot
-#                 with -kernel (default: false) (since 6.2)
-#
 # Since: 2.12
 ##
 { 'struct': 'SevGuestProperties',
@@ -875,8 +876,7 @@
   'data': { '*dh-cert-file': 'str',
             '*session-file': 'str',
             '*policy': 'uint32',
-            '*handle': 'uint32',
-            '*kernel-hashes': 'bool' } }
+            '*handle': 'uint32' } }
 
 ##
 # @SevSnpGuestProperties:

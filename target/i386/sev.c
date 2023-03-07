@@ -64,6 +64,7 @@ struct SevCommonState {
     char *sev_device;
     uint32_t cbitpos;
     uint32_t reduced_phys_bits;
+    bool kernel_hashes;
     bool upm_mode;
     char *discard;
 
@@ -88,7 +89,6 @@ struct SevGuestState {
     uint32_t policy;
     char *dh_cert_file;
     char *session_file;
-    bool kernel_hashes;
 };
 
 struct SevSnpGuestState {
@@ -390,6 +390,16 @@ sev_common_set_sev_device(Object *obj, const char *value, Error **errp)
     SEV_COMMON(obj)->sev_device = g_strdup(value);
 }
 
+static bool sev_common_get_kernel_hashes(Object *obj, Error **errp)
+{
+    return SEV_COMMON(obj)->kernel_hashes;
+}
+
+static void sev_common_set_kernel_hashes(Object *obj, bool value, Error **errp)
+{
+    SEV_COMMON(obj)->kernel_hashes = value;
+}
+
 static bool sev_common_get_upm_mode(Object *obj, Error **errp)
 {
     return SEV_COMMON(obj)->upm_mode;
@@ -420,6 +430,11 @@ sev_common_class_init(ObjectClass *oc, void *data)
                                   sev_common_set_sev_device);
     object_class_property_set_description(oc, "sev-device",
             "SEV device to use");
+    object_class_property_add_bool(oc, "kernel-hashes",
+                                   sev_common_get_kernel_hashes,
+                                   sev_common_set_kernel_hashes);
+    object_class_property_set_description(oc, "kernel-hashes",
+            "add kernel hashes to guest firmware for measured Linux boot");
     object_class_property_add_bool(oc, "upm-mode",
                                    sev_common_get_upm_mode,
                                    sev_common_set_upm_mode);
@@ -484,20 +499,6 @@ sev_guest_set_session_file(Object *obj, const char *value, Error **errp)
     SEV_GUEST(obj)->session_file = g_strdup(value);
 }
 
-static bool sev_guest_get_kernel_hashes(Object *obj, Error **errp)
-{
-    SevGuestState *sev_guest = SEV_GUEST(obj);
-
-    return sev_guest->kernel_hashes;
-}
-
-static void sev_guest_set_kernel_hashes(Object *obj, bool value, Error **errp)
-{
-    SevGuestState *sev = SEV_GUEST(obj);
-
-    sev->kernel_hashes = value;
-}
-
 static void
 sev_guest_class_init(ObjectClass *oc, void *data)
 {
@@ -511,11 +512,6 @@ sev_guest_class_init(ObjectClass *oc, void *data)
                                   sev_guest_set_session_file);
     object_class_property_set_description(oc, "session-file",
             "guest owners session parameters (encoded with base64)");
-    object_class_property_add_bool(oc, "kernel-hashes",
-                                   sev_guest_get_kernel_hashes,
-                                   sev_guest_set_kernel_hashes);
-    object_class_property_set_description(oc, "kernel-hashes",
-            "add kernel hashes to guest firmware for measured Linux boot");
 }
 
 static void
@@ -2083,31 +2079,45 @@ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp)
     uint8_t initrd_hash[HASH_SIZE];
     uint8_t kernel_hash[HASH_SIZE];
     uint8_t *hashp;
+    hwaddr mapped_gpa, mapped_offset, mapped_len, expected_mapped_len;
+    uint8_t *mapped_area = NULL;
+    MemoryRegion *mr = NULL;
+    void *hva;
     size_t hash_len = HASH_SIZE;
-    hwaddr mapped_len = sizeof(*padded_ht);
     MemTxAttrs attrs = { 0 };
     bool ret = true;
     SevCommonState *sev_common = SEV_COMMON(MACHINE(qdev_get_machine())->cgs);
-    SevGuestState *sev_guest =
-        (SevGuestState *)object_dynamic_cast(OBJECT(sev_common),
-                                             TYPE_SEV_GUEST);
 
     /*
      * Only add the kernel hashes if the sev-guest configuration explicitly
-     * stated kernel-hashes=on. Currently only enabled for SEV/SEV-ES guests,
-     * so check for TYPE_SEV_GUEST as well.
+     * stated kernel-hashes=on.
      */
-    if (sev_guest && !sev_guest->kernel_hashes) {
+    if (!sev_common->kernel_hashes) {
+        if (sev_snp_enabled()) {
+            /* Mark the hashes page (if defined) as a zero page */
+            if (!pc_system_ovmf_table_find(SEV_HASH_TABLE_RV_GUID, &data, NULL)) {
+                return false;
+            }
+
+            area = (SevHashTableDescriptor *)data;
+            if (!area->base || area->size < sizeof(PaddedSevHashTable)) {
+                return false;
+            }
+
+            mapped_gpa = area->base & TARGET_PAGE_MASK;
+            hva = gpa2hva(&mr, mapped_gpa, TARGET_PAGE_SIZE, NULL);
+            if (sev_snp_launch_update(SEV_SNP_GUEST(sev_common), mapped_gpa, hva,
+                                      TARGET_PAGE_SIZE, KVM_SEV_SNP_PAGE_TYPE_ZERO)) {
+                error_setg(errp, "SEV: error marking kernel hashes page as zero");
+            }
+            return false;
+        }
         return false;
     }
 
     if (!pc_system_ovmf_table_find(SEV_HASH_TABLE_RV_GUID, &data, NULL)) {
         error_setg(errp, "SEV: kernel specified but guest firmware "
                          "has no hashes table GUID");
-        return false;
-    }
-
-    if (sev_snp_enabled()) {
         return false;
     }
 
@@ -2157,12 +2167,25 @@ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp)
      * Populate the hashes table in the guest's memory at the OVMF-designated
      * area for the SEV hashes table
      */
-    padded_ht = address_space_map(&address_space_memory, area->base,
-                                  &mapped_len, true, attrs);
-    if (!padded_ht || mapped_len != sizeof(*padded_ht)) {
+    if (sev_snp_enabled()) {
+        /* SNP encrypts and measures memory in whole pages */
+        mapped_gpa = area->base & TARGET_PAGE_MASK;
+        mapped_offset = area->base & ~TARGET_PAGE_MASK;
+        mapped_len = TARGET_PAGE_SIZE;
+    } else {
+        mapped_gpa = area->base;
+        mapped_offset = 0;
+        mapped_len = sizeof(*padded_ht);
+    }
+    expected_mapped_len = mapped_len;
+    mapped_area = address_space_map(&address_space_memory, mapped_gpa,
+                                    &mapped_len, true, attrs);
+    if (!mapped_area || mapped_len != expected_mapped_len) {
         error_setg(errp, "SEV: cannot map hashes table guest memory area");
         return false;
     }
+    memset(mapped_area, 0, mapped_len);
+    padded_ht = (PaddedSevHashTable *)(mapped_area + mapped_offset);
     ht = &padded_ht->ht;
 
     ht->guid = sev_hash_table_header_guid;
@@ -2183,11 +2206,11 @@ bool sev_add_kernel_loader_hashes(SevKernelLoaderContext *ctx, Error **errp)
     /* zero the excess data so the measurement can be reliably calculated */
     memset(padded_ht->padding, 0, sizeof(padded_ht->padding));
 
-    if (sev_encrypt_flash(area->base, (uint8_t *)padded_ht, sizeof(*padded_ht), errp) < 0) {
+    if (sev_encrypt_flash(mapped_gpa, mapped_area, mapped_len, errp) < 0) {
         ret = false;
     }
 
-    address_space_unmap(&address_space_memory, padded_ht,
+    address_space_unmap(&address_space_memory, mapped_area,
                         mapped_len, true, mapped_len);
 
     return ret;
